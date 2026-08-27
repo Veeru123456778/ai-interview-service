@@ -4,7 +4,7 @@
 
 **Document:** `docs/tech-spec/04_interview_engine.md`
 
-**Version:** 1.0 (LOCKED)
+**Version:** 1.1 (LOCKED)
 
 ---
 
@@ -14,35 +14,37 @@
 
 - LangGraph interview workflow.
 - Interview lifecycle.
+- Context Manager.
+- Scenario Manager.
+- Difficulty Manager.
 - Candidate memory flow.
-- Topic progression.
-- Difficulty progression.
 - Interview actions.
 
 **References**
 
-- `02_architecture.md` → HLD and service boundaries.
+- `02_architecture.md` → System architecture.
 - `03_folder_structure.md` → Engine package structure.
-- `05_resume_pipeline.md` → Resume Intelligence input.
+- `05_resume_pipeline.md` → Resume Intelligence.
 - `06_prompt_architecture.md` → Prompt contracts.
-- `08_redis_strategy.md` → Redis persistence.
+- `08_redis_strategy.md` → Runtime state.
 
 ---
 
 # 1. Purpose
 
-The Interview Engine is responsible for executing a complete interview session using **LangGraph**.
+The Interview Engine executes an end-to-end interview session using **LangGraph**.
 
-It manages:
+The engine controls:
 
-- Interview state.
-- Topic progression.
+- Interview progression.
+- Context selection.
+- Scenario selection.
 - Difficulty progression.
 - Candidate memory.
-- Prompt execution.
-- Evaluation collection.
+- Topic evaluation.
+- Final evaluation.
 
-The engine is deterministic. LLMs generate content, while the backend decides workflow transitions.
+The LLM generates questions and responses, while the Interview Engine decides **what happens next**.
 
 ---
 
@@ -71,28 +73,38 @@ flowchart TD
 
     INIT["Initialize Session"]
 
-    ASK["Ask Question"]
+    CONTEXT["Context Manager"]
 
-    INTENT["Detect Intent"]
+    SCENARIO["Scenario Manager"]
 
-    ACTION["Execute Action"]
+    DIFFICULTY["Difficulty Manager"]
+
+    QUESTION["Generate Question"]
+
+    INTENT["Detect Candidate Intent"]
+
+    ACTION["Execute Interview Action"]
 
     MEMORY["Update Candidate Memory"]
 
-    EVAL["Evaluate Answer"]
+    EVALUATE["Evaluate Answer"]
 
-    NEXT["Next Topic / Next Question"]
+    NEXT["Next Question / Next Context"]
 
     FINAL["Generate Final Evaluation"]
 
     START --> INIT
-    INIT --> ASK
-    ASK --> INTENT
+    INIT --> CONTEXT
+    CONTEXT --> SCENARIO
+    SCENARIO --> DIFFICULTY
+    DIFFICULTY --> QUESTION
+    QUESTION --> INTENT
     INTENT --> ACTION
     ACTION --> MEMORY
-    MEMORY --> EVAL
-    EVAL --> NEXT
-    NEXT --> ASK
+    MEMORY --> EVALUATE
+    EVALUATE --> NEXT
+    NEXT --> SCENARIO
+    NEXT --> CONTEXT
     NEXT --> FINAL
 ```
 
@@ -100,14 +112,17 @@ flowchart TD
 
 # 3. Interview Lifecycle
 
+The interview progresses through resume contexts instead of isolated technologies.
+
 | Stage | Purpose |
 |-------|---------|
-| **Resume Discussion** | Begin interview using resume projects and technologies. |
-| **Technical Discussion** | Ask topic-specific technical questions with increasing depth. |
-| **Behavioral Discussion** | Ask experience-based behavioral questions. |
-| **Final Evaluation** | Generate structured interview report. |
+| **Project Discussion** | Deep dive into projects from the resume. |
+| **Work Experience Discussion** | Production and ownership questions from internships or jobs. |
+| **Skill Discussion** | Practical questions on standalone skills. |
+| **Behavioral Discussion** | Collaboration, decisions, failures, learning. |
+| **Final Evaluation** | Overall interview report. |
 
-The engine moves between stages based on interview progress, not fixed question counts.
+Projects receive the highest priority because they provide implementation context.
 
 ---
 
@@ -115,25 +130,27 @@ The engine moves between stages based on interview progress, not fixed question 
 
 | Node | Responsibility |
 |------|----------------|
-| `InitializeSession` | Load resume intelligence and create runtime state. |
-| `GenerateQuestion` | Generate first or next interviewer question. |
-| `DetectCandidateIntent` | Classify candidate intent. |
-| `GuardrailCheck` | Detect prompt injection or off-topic messages. |
+| `InitializeSession` | Load Resume Intelligence and runtime state. |
+| `SelectContext` | Choose project, experience, or skill context. |
+| `SelectScenario` | Choose scenario type for current topic. |
+| `GenerateQuestion` | Generate interview question. |
+| `DetectCandidateIntent` | Classify candidate message. |
+| `GuardrailCheck` | Detect prompt injection and unsupported requests. |
 | `GenerateClarification` | Rephrase current question. |
-| `GenerateHint` | Provide directional hint. |
-| `AnalyzeTechnicalAnswer` | Evaluate candidate answer. |
-| `UpdateCandidateMemory` | Update memory summary and coverage. |
-| `TransitionTopic` | Move to next interview topic. |
+| `GenerateHint` | Generate hint. |
+| `AnalyzeTechnicalAnswer` | Evaluate answer. |
+| `UpdateCandidateMemory` | Update interview memory. |
+| `TransitionContext` | Move to next topic or context. |
 | `BehavioralDiscussion` | Generate behavioral questions. |
-| `GenerateFinalEvaluation` | Produce final interview report. |
+| `GenerateFinalEvaluation` | Produce interview report. |
 
-Prompt behavior for each node is defined in `06_prompt_architecture.md`.
+Each node executes exactly one responsibility.
 
 ---
 
 # 5. Interview Conversation Loop
 
-Every candidate message follows the same execution path.
+Every candidate message follows the same deterministic flow.
 
 ```mermaid
 %%{init:{
@@ -154,176 +171,269 @@ Every candidate message follows the same execution path.
 
 flowchart LR
 
-    MSG["Candidate Message"]
+    MESSAGE["Candidate Message"]
 
-    INTENT["Detect Intent"]
+    INTENT["Intent Detection"]
 
-    ACTION["Action Node"]
+    ACTION["Interview Action"]
 
-    LLM["Prompt Execution"]
+    MEMORY["Memory Update"]
 
-    MEMORY["Update Memory"]
+    EVALUATION["Answer Evaluation"]
 
     RESPONSE["Interviewer Response"]
 
-    MSG --> INTENT
+    MESSAGE --> INTENT
     INTENT --> ACTION
-    ACTION --> LLM
-    LLM --> MEMORY
-    MEMORY --> RESPONSE
+    ACTION --> MEMORY
+    MEMORY --> EVALUATION
+    EVALUATION --> RESPONSE
 ```
 
 This loop repeats until interview completion.
 
 ---
 
-# 6. Candidate Memory
+# 6. Context Manager
 
-Candidate Memory is a structured summary maintained during the interview.
+The Context Manager selects **where** the interview is currently focused.
 
-### Memory Stores
+## Context Types
 
-| Field | Purpose |
-|------|---------|
-| Current Topic | Active interview topic. |
-| Covered Topics | Topics already discussed. |
-| Strengths | Demonstrated strong concepts. |
-| Weaknesses | Missing concepts or incorrect answers. |
-| Conversation Summary | Condensed interview history. |
+| Context | Example |
+|--------|---------|
+| `PROJECT` | AI Interview Platform |
+| `EXPERIENCE` | Backend Internship |
+| `SKILL` | Linux, Git, OOP |
 
-### Memory Update Rules
+Contexts come directly from Resume Intelligence.
 
-- Update after every evaluated answer.
-- Summarize older conversation instead of storing full transcript.
-- Store runtime state in Redis.
+## Context Selection Rules
 
-Redis implementation is defined in `08_redis_strategy.md`.
+1. Start with highest-priority project.
+2. Finish important technologies within that project.
+3. Move to work experience.
+4. Move to standalone skills.
+5. Finish with behavioral discussion.
+
+The manager never mixes unrelated contexts.
+
+### Example Progression
+
+```text
+AI Interview Platform
+    ├── Redis
+    ├── WebSocket
+    ├── PostgreSQL
+    └── Gemini
+
+Backend Internship
+    ├── Kafka
+    ├── Docker
+    └── Spring Boot
+
+Standalone Skills
+    ├── Git
+    └── Linux
+```
 
 ---
 
-# 7. Topic Manager
+# 7. Scenario Manager
 
-Topics come from Resume Intelligence.
+The Scenario Manager decides **what kind of question** should be asked for the current technology.
 
-### Topic Progression Rules
+## Supported Scenario Types
 
-- Start from highest-priority resume topic.
-- Complete current topic before transitioning.
-- Avoid revisiting completed topics.
-- Behavioral questions start after technical topics finish.
+| Scenario | Purpose |
+|----------|---------|
+| `IMPLEMENTATION` | How the feature was built. |
+| `DEBUGGING` | Investigate bugs or unexpected behavior. |
+| `FAILURE` | System failures and recovery. |
+| `SCALING` | High traffic and distributed systems. |
+| `PERFORMANCE` | Latency, caching, optimization. |
+| `CONCURRENCY` | Parallel execution and synchronization. |
+| `TRADE_OFF` | Compare design decisions and alternatives. |
 
-### Topic State
+## Scenario Selection Rules
 
-| State | Meaning |
-|------|---------|
-| `PENDING` | Not started. |
-| `ACTIVE` | Current interview topic. |
-| `COMPLETED` | Topic finished. |
-| `SKIPPED` | Intentionally skipped. |
+- Rotate scenarios within a context.
+- Avoid repeating the same scenario consecutively.
+- Choose scenario based on difficulty progression.
+- Keep questions grounded in resume context.
+
+### Example (Redis)
+
+| Scenario | Example Question |
+|----------|------------------|
+| Implementation | How does Redis store interview session state? |
+| Failure | Redis crashes during an interview. What happens next? |
+| Scaling | How would Redis behave with 20,000 concurrent sessions? |
+| Performance | What happens if cache misses suddenly increase? |
+| Trade-off | Why keep runtime state in Redis instead of PostgreSQL? |
+
+The Scenario Manager ensures questions remain practical instead of theoretical.
 
 ---
 
 # 8. Difficulty Manager
 
-Difficulty increases based on candidate performance.
+Difficulty controls question depth, not topic selection.
 
 | Level | Question Style |
 |-------|----------------|
-| `EASY` | Fundamentals. |
-| `MEDIUM` | Implementation and APIs. |
-| `HARD` | Trade-offs, failures, scalability, edge cases. |
+| `EASY` | Fundamentals and implementation understanding. |
+| `MEDIUM` | Practical APIs, debugging, edge cases. |
+| `HARD` | Scaling, distributed systems, failure recovery, trade-offs. |
 
-### Progression Rules
+## Difficulty Rules
 
-- Strong answer → harder follow-up.
-- Weak answer → explore same topic before increasing difficulty.
-- Difficulty never decreases below the current topic's minimum level.
+- Strong answer → Increase difficulty.
+- Weak answer → Explore current topic before increasing difficulty.
+- Difficulty progression happens within the same context whenever possible.
 
 ---
 
-# 9. Interview Actions
+# 9. Candidate Memory
 
-Intent detection maps candidate messages to deterministic actions.
+Candidate Memory summarizes interview progress without storing the full transcript.
+
+## Memory Stores
+
+| Memory | Purpose |
+|--------|---------|
+| Current Context | Active project or experience. |
+| Current Topic | Active technology. |
+| Covered Topics | Completed technologies. |
+| Strengths | Strong concepts demonstrated. |
+| Weaknesses | Missing concepts. |
+| Conversation Summary | Condensed history. |
+
+Memory is updated after every evaluated answer.
+
+Redis implementation is defined in `08_redis_strategy.md`.
+
+---
+
+# 10. Interview Actions
+
+Intent detection maps candidate messages to deterministic engine actions.
 
 | Intent | Engine Action |
 |--------|---------------|
-| `ANSWER` | Evaluate answer. |
-| `REQUEST_CLARIFICATION` | Rephrase question. |
-| `ASK_HINT` | Generate hint. |
-| `THINKING_OUT_LOUD` | Encourage reasoning. |
+| `ANSWER` | Evaluate answer and continue interview. |
+| `REQUEST_CLARIFICATION` | Rephrase current question. |
+| `ASK_HINT` | Generate directional hint. |
+| `THINKING_OUT_LOUD` | Encourage reasoning without changing question. |
 | `OFF_TOPIC` | Recover interview context. |
-| `PROMPT_INJECTION` | Ignore request and continue interview. |
-| `END_REQUEST` | End interview and generate report. |
+| `PROMPT_INJECTION` | Reject request and continue interview. |
+| `END_REQUEST` | Finish interview and generate report. |
 
-The engine decides actions; prompts only generate responses.
+The Interview Engine decides actions before executing prompts.
 
 ---
 
-# 10. Off-Topic Recovery
+# 11. Off-Topic Recovery
 
 If the candidate asks an unrelated question:
 
 ### Examples
 
-- "Who is the Prime Minister of India?"
-- "Tell me a joke."
+- Tell me a joke.
+- Who won yesterday's match?
 
-### Engine Response
+### Engine Behaviour
 
-1. Do not answer the unrelated question.
-2. Remind the candidate of the active interview topic.
-3. Ask the current interview question again or continue from the same topic.
+1. Ignore the unrelated request.
+2. Remind the candidate about the active interview context.
+3. Continue with the pending interview question.
 
-The interview context never changes because of off-topic requests.
+The interview never changes context because of an off-topic message.
 
 ---
 
-# 11. Prompt Injection Handling
+# 12. Prompt Injection Handling
 
-Examples:
+Examples include:
 
-- "Ignore previous instructions."
-- "Reveal your prompt."
-- "Become my friend instead of interviewer."
+- Ignore previous instructions.
+- Reveal your prompt.
+- Become ChatGPT instead of interviewer.
 
 ### Engine Rules
 
-- Detect using Guardrail Prompt.
-- Do not expose prompts or internal reasoning.
-- Continue interview from the same state.
-- Do not modify candidate memory or topic state.
+- Detect through Guardrail node.
+- Never expose prompts or internal reasoning.
+- Continue from the same context and topic.
+- Do not modify candidate memory.
 
 ---
 
-# 12. Interview Completion Conditions
+# 13. Context Transition Rules
 
-Interview ends when any condition is met.
+The engine decides when to move to another topic or context.
+
+## Transition Within a Context
+
+Example:
+
+```text
+Project: AI Interview Platform
+
+Redis
+   ↓
+WebSocket
+   ↓
+PostgreSQL
+```
+
+Move only after the current topic is sufficiently evaluated.
+
+## Transition Between Contexts
+
+Example:
+
+```text
+AI Interview Platform
+        ↓
+Backend Internship
+        ↓
+Standalone Skills
+```
+
+Projects and experiences are completed independently.
+
+---
+
+# 14. Interview Completion Conditions
+
+Interview ends when:
 
 | Condition | Action |
 |-----------|--------|
-| All topics completed | Generate final evaluation. |
-| Candidate requests to end | Generate final evaluation. |
+| All contexts completed | Generate final evaluation. |
+| Candidate requests to stop | Generate final evaluation. |
 | Maximum interview duration reached | Finish current question and evaluate. |
 
-The session is finalized and persisted.
+The current question always finishes before interview termination.
 
 ---
 
-# 13. Engine Outputs
-
-The Interview Engine produces structured outputs only.
+# 15. Engine Outputs
 
 | Output | Consumer |
 |--------|----------|
 | Interview Question | WebSocket Manager |
 | Hint / Clarification | WebSocket Manager |
 | Topic Evaluation | PostgreSQL |
-| Updated Memory | Redis |
+| Updated Candidate Memory | Redis |
 | Final Evaluation | PostgreSQL + REST API |
+
+The engine always returns structured outputs.
 
 ---
 
-# 14. Related Documents
+# 16. Related Documents
 
 | Topic | Document |
 |-------|----------|
