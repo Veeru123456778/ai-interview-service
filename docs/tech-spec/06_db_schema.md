@@ -4,7 +4,7 @@
 
 **Document:** `docs/tech-spec/07_database_schema.md`
 
-**Version:** 1.1 (LOCKED)
+**Version:** 1.2 (LOCKED)
 
 ---
 
@@ -29,11 +29,14 @@
 
 # 1. Database Design Principles
 
+### Core Principles
+
 - PostgreSQL is the **source of truth**.
 - UUID is the primary key for every table.
-- Runtime interview state is stored only in Redis.
-- `JSONB` is used only for flexible nested structures.
-- Authentication is handled by Supabase Auth.
+- Runtime interview state lives only in Redis.
+- Use `JSONB` only for flexible nested structures.
+- Authentication is handled by **Supabase Auth**.
+- Resume Intelligence is stored once per resume.
 
 ---
 
@@ -74,86 +77,140 @@ erDiagram
 
 | Table | Purpose |
 |-------|---------|
-| `users` | Candidate accounts (Supabase linked). |
+| `users` | Candidate accounts linked with Supabase Auth. |
 | `resumes` | Resume metadata and Resume Intelligence. |
-| `interview_sessions` | Interview session metadata. |
-| `conversation_messages` | Complete interview transcript. |
-| `topic_evaluations` | Evaluation for each interview topic. |
-| `final_evaluations` | Final interview report. |
+| `interview_sessions` | Metadata for each interview attempt. |
+| `conversation_messages` | Permanent interview transcript. |
+| `topic_evaluations` | Evaluation for each technology discussed. |
+| `final_evaluations` | Overall interview report. |
 
 ---
 
 # 4. users
 
+Stores application users.
+
 | Column | Type | Notes |
 |--------|------|------|
 | `id` | UUID | Primary Key |
-| `supabase_user_id` | UUID | Unique Supabase user ID |
+| `supabase_user_id` | UUID | Unique Supabase user identifier |
 | `name` | VARCHAR(150) | Candidate name |
-| `email` | VARCHAR(255) | Unique |
+| `email` | VARCHAR(255) | Unique email |
 | `created_at` | TIMESTAMP | Creation time |
 | `updated_at` | TIMESTAMP | Last update |
 
 ### Constraints
 
-- PK → `id`
+- Primary Key → `id`
 - Unique → `email`
 - Unique → `supabase_user_id`
 
-Passwords are managed entirely by Supabase.
+### Notes
+
+- Passwords are **never stored** in PostgreSQL.
+- JWT verification is handled using Supabase.
 
 ---
 
 # 5. resumes
 
-Stores both resume metadata and Resume Intelligence.
+Stores uploaded resume metadata and generated Resume Intelligence.
 
 | Column | Type | Notes |
 |--------|------|------|
 | `id` | UUID | Primary Key |
 | `user_id` | UUID | FK → users |
-| `file_name` | VARCHAR(255) | Uploaded filename |
+| `file_name` | VARCHAR(255) | Original uploaded filename |
 | `status` | VARCHAR(30) | `PROCESSING`, `READY`, `FAILED` |
 | `skills` | JSONB | Normalized skills |
 | `projects` | JSONB | Parsed projects |
-| `experience` | JSONB | Parsed experience |
-| `technology_graph` | JSONB | Technologies extracted from resume |
-| `interview_topics` | JSONB | Context-aware interview plan |
+| `experience` | JSONB | Parsed work experience |
+| `technology_graph` | JSONB | Unique technology catalog |
+| `interview_contexts` | JSONB | Project / Experience interview plan |
 | `created_at` | TIMESTAMP | Upload time |
 | `updated_at` | TIMESTAMP | Processing completion time |
 
-### Interview Topics Structure
+### Technology Graph
 
-The Resume Pipeline generates **Interview Contexts** instead of standalone topics.
+Each technology appears **once**, even if it is used in multiple projects.
 
 ```json
-[
-  {
-    "context_id": "ctx-uuid",
-    "context_type": "PROJECT",
-    "context_name": "AI Interview Platform",
-    "context_priority": 1,
-
-    "topic_id": "topic-uuid",
-    "topic_name": "Redis",
-    "difficulty": "MEDIUM",
-
-    "source": {
-      "project_name": "AI Interview Platform",
-      "project_description": "Real-time AI interview platform."
+{
+  "topics": [
+    {
+      "topic_id": "redis-id",
+      "name": "Redis",
+      "category": "Database",
+      "difficulty": "MEDIUM",
+      "confidence": 0.98
+    },
+    {
+      "topic_id": "postgres-id",
+      "name": "PostgreSQL",
+      "category": "Database",
+      "difficulty": "HARD",
+      "confidence": 0.96
     }
-  }
-]
+  ]
+}
 ```
 
-### Notes
+### Interview Contexts
 
-- Raw PDF is processed once and discarded.
-- Resume Intelligence is stored in this table.
+Contexts reference technologies using `topic_id`.
+
+```json
+{
+  "contexts": [
+    {
+      "context_id": "ctx-project-1",
+      "context_type": "PROJECT",
+      "context_name": "AI Interview Platform",
+      "priority": 1,
+      "topic_ids": [
+        "redis-id",
+        "postgres-id",
+        "websocket-id",
+        "gemini-id"
+      ]
+    },
+    {
+      "context_id": "ctx-exp-1",
+      "context_type": "EXPERIENCE",
+      "context_name": "Backend Internship",
+      "priority": 2,
+      "topic_ids": [
+        "redis-id",
+        "kafka-id",
+        "docker-id"
+      ]
+    },
+    {
+      "context_id": "ctx-skill-1",
+      "context_type": "SKILL",
+      "context_name": "Linux",
+      "priority": 3,
+      "topic_ids": [
+        "linux-id"
+      ]
+    }
+  ]
+}
+```
+
+### Why separate Technology Graph and Interview Contexts?
+
+| Technology Graph | Interview Contexts |
+|------------------|-------------------|
+| Stores unique technologies. | Stores projects, experience, and skills. |
+| Redis exists once. | Redis can appear in multiple contexts through `topic_ids`. |
+| Shared metadata (difficulty/category). | Defines interview execution order. |
 
 ---
 
 # 6. interview_sessions
+
+Represents one interview attempt.
 
 | Column | Type | Notes |
 |--------|------|------|
@@ -162,13 +219,14 @@ The Resume Pipeline generates **Interview Contexts** instead of standalone topic
 | `resume_id` | UUID | FK → resumes |
 | `status` | VARCHAR(30) | `ACTIVE`, `COMPLETED`, `ABANDONED` |
 | `started_at` | TIMESTAMP | Interview start |
-| `ended_at` | TIMESTAMP | Interview completion |
+| `ended_at` | TIMESTAMP | Interview end |
 | `created_at` | TIMESTAMP | Record creation |
 
 ### Session Rules
 
-- One resume can have multiple interview sessions.
-- Runtime state exists only while the session is active.
+- One resume can be used for multiple interviews.
+- Runtime state exists only while status is `ACTIVE`.
+- Interview duration is derived from `ended_at - started_at`.
 
 ---
 
@@ -182,12 +240,13 @@ Stores the permanent interview transcript.
 | `session_id` | UUID | FK → interview_sessions |
 | `sender` | VARCHAR(20) | `INTERVIEWER`, `CANDIDATE`, `SYSTEM` |
 | `message_type` | VARCHAR(30) | `QUESTION`, `ANSWER`, `FOLLOW_UP`, `HINT`, `CLARIFICATION`, `SYSTEM` |
-| `topic_id` | UUID | Active technology during the message |
-| `scenario_type` | VARCHAR(30) | Interview scenario for this question |
-| `content` | TEXT | Message text |
+| `context_id` | UUID | Current project / experience / skill context |
+| `topic_id` | UUID | Current technology being discussed |
+| `scenario_type` | VARCHAR(30) | Current interview scenario |
+| `content` | TEXT | Message content |
 | `created_at` | TIMESTAMP | Message timestamp |
 
-### Allowed Scenario Types
+### Scenario Types
 
 - `IMPLEMENTATION`
 - `DEBUGGING`
@@ -198,27 +257,34 @@ Stores the permanent interview transcript.
 - `TRADE_OFF`
 - `BEHAVIORAL`
 
-### Why store `scenario_type`?
+### Why store `context_id`?
 
-It allows replaying the interview flow and generating analytics such as strengths in debugging vs scaling questions.
+A technology can belong to multiple contexts.
+
+| Context | Topic |
+|--------|------|
+| AI Interview Platform | Redis |
+| Backend Internship | Redis |
+
+`context_id` identifies **which project or experience** the Redis question belongs to.
 
 ---
 
 # 8. topic_evaluations
 
-Stores evaluation after a topic is completed.
+Stores evaluation after a technology discussion is completed.
 
 | Column | Type | Notes |
 |--------|------|------|
 | `id` | UUID | Primary Key |
 | `session_id` | UUID | FK → interview_sessions |
-| `topic_id` | UUID | Topic being evaluated |
+| `topic_id` | UUID | Technology evaluated |
 | `difficulty_level` | VARCHAR(20) | `EASY`, `MEDIUM`, `HARD` |
 | `technical_score` | SMALLINT | 1–5 |
 | `depth_score` | SMALLINT | 1–5 |
 | `reasoning_score` | SMALLINT | 1–5 |
 | `communication_score` | SMALLINT | 1–5 |
-| `scenarios_covered` | JSONB | Scenario types discussed for this topic |
+| `scenarios_covered` | JSONB | Scenarios discussed for this topic |
 | `strengths` | JSONB | Strong concepts demonstrated |
 | `weaknesses` | JSONB | Missing or incorrect concepts |
 | `created_at` | TIMESTAMP | Evaluation timestamp |
@@ -235,7 +301,7 @@ Stores evaluation after a topic is completed.
 
 ### Constraints
 
-Unique evaluation per topic per interview session.
+One evaluation per technology per interview session.
 
 ```text
 (session_id, topic_id)
@@ -244,6 +310,8 @@ Unique evaluation per topic per interview session.
 ---
 
 # 9. final_evaluations
+
+Stores the final interview report.
 
 | Column | Type | Notes |
 |--------|------|------|
@@ -277,6 +345,8 @@ session_id
 | `topic_evaluations` | `(session_id, topic_id)` |
 | `final_evaluations` | `session_id` (unique) |
 
+These indexes support interview history, replay, and reporting APIs.
+
 ---
 
 # 11. Constraints
@@ -301,7 +371,7 @@ session_id
 | Interview transcript | PostgreSQL |
 | Topic evaluations | PostgreSQL |
 | Final evaluation | PostgreSQL |
-| Runtime interview state | Redis |
+| Active interview state | Redis |
 
 Redis never stores permanent interview history.
 
@@ -309,19 +379,19 @@ Redis never stores permanent interview history.
 
 # 13. JSONB Usage Policy
 
-| Column | Reason |
-|--------|--------|
+| Column | Why JSONB? |
+|--------|------------|
 | `skills` | Variable skill list. |
 | `projects` | Nested project objects. |
 | `experience` | Variable experience entries. |
-| `technology_graph` | Technology relationships. |
-| `interview_topics` | Context → Topic hierarchy. |
-| `scenarios_covered` | Variable scenario list per topic. |
-| `strengths` | Dynamic list of strengths. |
-| `weaknesses` | Dynamic list of weaknesses. |
-| `learning_recommendations` | Dynamic recommendations. |
+| `technology_graph` | Unique technology catalog. |
+| `interview_contexts` | Context → Topic mapping. |
+| `scenarios_covered` | Variable scenario list. |
+| `strengths` | Variable list of strengths. |
+| `weaknesses` | Variable list of weaknesses. |
+| `learning_recommendations` | Variable recommendation list. |
 
-Fixed evaluation metrics remain typed SQL columns.
+All evaluation scores remain typed SQL columns.
 
 ---
 
