@@ -14,15 +14,15 @@
 
 - High-Level Architecture (HLD)
 - Service boundaries
-- Backend communication flow
+- Backend request lifecycle
 - Runtime component responsibilities
 
-**References:**
+**References**
 
-- `01_tech_stack.md` → Technology choices.
-- `03_folder_structure.md` → Package organization.
-- `04_interview_engine.md` → Interview workflow.
-- `05_resume_pipeline.md` → Resume processing internals.
+- `01_tech_stack.md` → Technology decisions.
+- `03_folder_structure.md` → Repository structure.
+- `04_interview_engine.md` → Interview workflow and conversation loop.
+- `05_resume_pipeline.md` → Resume parsing pipeline.
 - `08_redis_strategy.md` → Redis runtime state.
 
 ---
@@ -46,38 +46,41 @@
   }
 }}%%
 
-flowchart TD
+flowchart LR
 
-    USER["Frontend (Next.js)"]
+    FRONTEND["Frontend (Next.js)"]
 
-    WS["WebSocket Manager"]
+    subgraph SERVICE["Interview Service (Go + Gin)"]
 
-    API["Interview Service (Go + Gin)"]
+        REST["REST Handlers"]
 
-    RESUME["Resume Pipeline"]
+        WS["WebSocket Manager"]
 
-    ENGINE["Interview Engine (LangGraph)"]
+        RESUME["Resume Pipeline"]
+
+        ENGINE["Interview Engine (LangGraph)"]
+
+    end
 
     LLM["LangChain + Gemini"]
 
     PG["PostgreSQL"]
 
-    REDIS["Redis Runtime State"]
+    REDIS["Redis"]
 
-    USER --> API
-    USER --> WS
+    FRONTEND -->|"REST APIs"| REST
+    FRONTEND <-->|"WebSocket"| WS
 
-    WS --> API
+    REST --> RESUME
+    REST --> ENGINE
 
-    API --> RESUME
-    API --> ENGINE
-
-    ENGINE --> LLM
+    WS --> ENGINE
 
     RESUME --> PG
-    API --> PG
 
+    ENGINE --> PG
     ENGINE --> REDIS
+    ENGINE --> LLM
 ```
 
 ---
@@ -86,28 +89,35 @@ flowchart TD
 
 | Component | Responsibility |
 |-----------|----------------|
-| **Frontend (Next.js)** | Resume upload, interview UI, speech input/output, WebSocket connection. |
-| **Interview Service** | REST APIs, authentication, session management, and request routing. |
-| **Resume Pipeline** | Convert uploaded resume into structured interview intelligence. |
-| **Interview Engine** | Execute LangGraph workflow and manage interview state. |
-| **LangChain + Gemini** | Execute prompts and return structured JSON responses. |
+| **Frontend (Next.js)** | Resume upload, interview UI, speech input/output, WebSocket client. |
+| **REST Handlers** | Authentication, resume upload, interview creation, profile APIs. |
+| **WebSocket Manager** | Maintains interview WebSocket connections and routes messages to the Interview Engine. |
+| **Resume Pipeline** | Converts uploaded resume into structured Resume Intelligence. |
+| **Interview Engine** | Executes LangGraph workflow and controls interview progression. |
+| **LangChain + Gemini** | Executes prompts and returns structured JSON responses. |
 | **PostgreSQL** | Persistent application data. |
-| **Redis** | Runtime interview state and caching. |
+| **Redis** | Runtime interview session state. |
 
 ---
 
 # 3. Runtime Data Ownership
 
-| Storage | Owns |
-|---------|------|
-| **PostgreSQL** | Users, resumes, interview sessions, evaluations, interview metadata. |
-| **Redis** | Current topic, covered topics, candidate memory, interview timers, active session state. |
+| Storage | Responsibility |
+|---------|----------------|
+| **PostgreSQL** | Users, resumes, interview sessions, topic evaluations, final evaluations. |
+| **Redis** | Current topic, covered topics, candidate memory, interview timer, active session state. |
 
-> PostgreSQL is the **source of truth**. Redis stores temporary runtime state only.
+**Design Rule**
+
+- PostgreSQL is the **source of truth**.
+- Redis stores temporary runtime state with TTL.
+- Runtime state can always be reconstructed from PostgreSQL if required.
 
 ---
 
-# 4. Backend Request Lifecycle
+# 4. Interview Initialization Flow
+
+This flow happens **once** before the interview starts.
 
 ```mermaid
 %%{init:{
@@ -129,76 +139,42 @@ flowchart TD
 sequenceDiagram
 
     participant User
-    participant API as Interview Service
-    participant Resume
-    participant Engine
-    participant LLM
-    participant PG
+    participant REST as REST Handlers
+    participant Resume as Resume Pipeline
+    participant LLM as Gemini
+    participant PG as PostgreSQL
+    participant Engine as Interview Engine
     participant Redis
 
-    User->>API: Upload Resume
-    API->>Resume: Process Resume
+    User->>REST: Upload Resume
+    REST->>Resume: Start Resume Processing
+
     Resume->>LLM: Parse Resume
     LLM-->>Resume: Structured Resume JSON
+
     Resume->>PG: Store Resume Intelligence
 
-    User->>API: Start Interview
-    API->>Engine: Initialize Session
+    User->>REST: Start Interview
+    REST->>Engine: Create Interview Session
+
     Engine->>PG: Load Resume Intelligence
-    Engine->>Redis: Create Runtime State
+    Engine->>Redis: Initialize Runtime State
     Engine->>LLM: Generate First Question
-    LLM-->>Engine: Structured Response
-    Engine-->>User: First Interview Question
+    LLM-->>Engine: First Question
+
+    Engine-->>REST: Session Ready
+    REST-->>User: Interview Started
 ```
 
-This sequence represents the complete backend flow before the interview begins.
+**Result**
+
+- Resume is parsed only once.
+- Runtime state is initialized in Redis.
+- First interviewer question is generated before WebSocket conversation begins.
 
 ---
 
-# 5. Real-Time Interview Flow
-
-```mermaid
-%%{init:{
-  "theme":"base",
-  "themeVariables":{
-    "background":"#FFFFFF",
-    "primaryColor":"#1E3A8A",
-    "primaryTextColor":"#FFFFFF",
-    "primaryBorderColor":"#111827",
-    "secondaryColor":"#2563EB",
-    "secondaryTextColor":"#FFFFFF",
-    "tertiaryColor":"#DBEAFE",
-    "lineColor":"#111827",
-    "edgeLabelBackground":"#FFFFFF",
-    "fontFamily":"Inter"
-  }
-}}%%
-
-sequenceDiagram
-
-    participant Frontend
-    participant WS as WebSocket Manager
-    participant Engine
-    participant Redis
-    participant LLM
-
-    Frontend->>WS: Candidate Message (Text)
-    WS->>Engine: Forward Candidate Message
-
-    Engine->>Redis: Load Runtime State
-    Engine->>LLM: Execute Current Prompt
-    LLM-->>Engine: Structured JSON Response
-
-    Engine->>Redis: Update Runtime State
-    Engine-->>WS: Interview Response
-    WS-->>Frontend: Render Interview Response
-```
-
-Speech is converted into text on the frontend using the Web Speech API before reaching the backend.
-
----
-
-# 6. Resume Processing Flow
+# 5. Resume Processing Flow
 
 ```mermaid
 %%{init:{
@@ -223,33 +199,78 @@ flowchart LR
 
     EXTRACT["Extract & Normalize Text"]
 
-    PARSE["LLM Resume Parser"]
+    PARSER["LLM Resume Parser"]
 
-    BUILD["Resume Intelligence Builder"]
+    BUILDER["Resume Intelligence Builder"]
 
     STORE["PostgreSQL"]
 
     PDF --> EXTRACT
-    EXTRACT --> PARSE
-    PARSE --> BUILD
-    BUILD --> STORE
+    EXTRACT --> PARSER
+    PARSER --> BUILDER
+    BUILDER --> STORE
 ```
 
-Detailed processing logic is defined in **`05_resume_pipeline.md`**.
+The detailed pipeline is defined in **`05_resume_pipeline.md`**.
+
+---
+
+# 6. Runtime Architecture
+
+The Interview Engine interacts with three runtime systems.
+
+```mermaid
+%%{init:{
+  "theme":"base",
+  "themeVariables":{
+    "background":"#FFFFFF",
+    "primaryColor":"#1E3A8A",
+    "primaryTextColor":"#FFFFFF",
+    "primaryBorderColor":"#111827",
+    "secondaryColor":"#2563EB",
+    "secondaryTextColor":"#FFFFFF",
+    "tertiaryColor":"#DBEAFE",
+    "lineColor":"#111827",
+    "edgeLabelBackground":"#FFFFFF",
+    "fontFamily":"Inter"
+  }
+}}%%
+
+flowchart TD
+
+    ENGINE["Interview Engine"]
+
+    REDIS["Redis Runtime State"]
+
+    PG["PostgreSQL"]
+
+    LLM["LangChain + Gemini"]
+
+    ENGINE --> REDIS
+    ENGINE --> PG
+    ENGINE --> LLM
+```
+
+| Dependency | Purpose |
+|------------|---------|
+| **Redis** | Load and update active interview state. |
+| **PostgreSQL** | Read resume intelligence and persist interview results. |
+| **LangChain + Gemini** | Execute prompt for the current LangGraph node. |
 
 ---
 
 # 7. Service Boundaries
 
-| Module | Responsibility |
-|--------|----------------|
-| **Interview Service** | Entry point for REST APIs and WebSocket connections. |
-| **Resume Pipeline** | Executes resume parsing once before interview creation. |
-| **Interview Engine** | Manages LangGraph workflow and interview progression. |
-| **WebSocket Manager** | Maintains client connections and message routing. |
-| **Storage Layer** | PostgreSQL and Redis access. |
+```text
+Interview Service
+├── REST Handlers
+├── WebSocket Manager
+├── Resume Pipeline
+├── Interview Engine
+└── Storage Layer
+```
 
-Each module owns a single responsibility and communicates through service interfaces.
+Each module owns one responsibility and communicates through service interfaces.
 
 ---
 
@@ -261,7 +282,7 @@ Each module owns a single responsibility and communicates through service interf
 | **LangChain** | Prompt execution and structured output parsing. |
 | **Web Speech API** | Speech-to-text and text-to-speech in the browser. |
 
-No external integration communicates directly with PostgreSQL or Redis.
+The backend receives **text only** over WebSocket.
 
 ---
 
@@ -270,7 +291,7 @@ No external integration communicates directly with PostgreSQL or Redis.
 - Stateless REST APIs.
 - Stateful interview sessions managed through Redis.
 - PostgreSQL is the persistent source of truth.
-- LangGraph controls interview orchestration.
+- LangGraph orchestrates interview progression.
 - LangChain abstracts the LLM provider.
 - Resume parsing happens once before interview initialization.
 
@@ -281,7 +302,7 @@ No external integration communicates directly with PostgreSQL or Redis.
 | Topic | Document |
 |-------|----------|
 | Folder Structure | `03_folder_structure.md` |
-| Interview Workflow | `04_interview_engine.md` |
+| Interview Workflow & Conversation Loop | `04_interview_engine.md` |
 | Resume Pipeline | `05_resume_pipeline.md` |
 | Prompt Architecture | `06_prompt_architecture.md` |
 | Database Schema | `07_database_schema.md` |
