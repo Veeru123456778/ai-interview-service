@@ -20,8 +20,8 @@
 **References**
 
 - `02_architecture.md` → Service architecture.
-- `04_interview_engine.md` → Engine workflow.
-- `05_resume_pipeline.md` → Resume processing.
+- `04_interview_engine.md` → Interview Engine workflow.
+- `05_resume_pipeline.md` → Resume processing pipeline.
 - `06_prompt_architecture.md` → Prompt contracts.
 
 ---
@@ -55,8 +55,6 @@ ai-interview-service/
 │   ├── storage/
 │   └── health/
 │
-├── prompts/
-│
 ├── migrations/
 ├── scripts/
 ├── tests/
@@ -64,9 +62,11 @@ ai-interview-service/
 │   └── fixtures/
 │
 ├── go.mod
+├── go.sum
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
+├── .env.example
 └── README.md
 ```
 
@@ -126,6 +126,20 @@ internal/interview/
     ├── graph/
     ├── nodes/
     ├── prompts/
+    │   ├── builder.go
+    │   ├── loader.go
+    │   ├── registry.go
+    │   ├── resume_parser_v1.txt
+    │   ├── intent_detector_v1.txt
+    │   ├── guardrail_detector_v1.txt
+    │   ├── technical_evaluator_v1.txt
+    │   ├── followup_generator_v1.txt
+    │   ├── clarification_generator_v1.txt
+    │   ├── hint_generator_v1.txt
+    │   ├── thinking_prompt_v1.txt
+    │   ├── topic_transition_v1.txt
+    │   ├── behavioral_generator_v1.txt
+    │   └── final_evaluation_v1.txt
     ├── provider/
     ├── memory/
     ├── evaluator/
@@ -133,18 +147,18 @@ internal/interview/
     └── utils/
 ```
 
-### Responsibilities
+### Engine Package Responsibilities
 
 | Package | Responsibility |
 |---------|----------------|
 | `graph` | LangGraph workflow definition and routing. |
-| `nodes` | Individual interview nodes (intent, evaluation, follow-up, etc.). |
-| `prompts` | Prompt builder, loader, registry, and prompt versions. |
-| `provider` | LangChain + Gemini integration. |
-| `memory` | Candidate memory management. |
-| `evaluator` | Topic and final evaluation aggregation. |
+| `nodes` | Individual LangGraph nodes (`DetectIntent`, `EvaluateAnswer`, `GenerateFollowUp`, etc.). |
+| `prompts` | Prompt builder, prompt loader, prompt registry, and versioned prompt templates. |
+| `provider` | LangChain client, Gemini integration, and structured LLM execution. |
+| `memory` | Candidate memory management and conversation summaries. |
+| `evaluator` | Topic-level and final interview evaluation aggregation. |
 | `schemas` | Typed request/response schemas for prompt outputs. |
-| `utils` | Engine-only helper utilities. |
+| `utils` | Engine-specific helper utilities. |
 
 ---
 
@@ -165,24 +179,23 @@ internal/resume/
 └── validator.go
 ```
 
-### Responsibilities
+### Resume Package Responsibilities
 
 | File | Responsibility |
 |------|----------------|
-| `extractor.go` | Extract text from uploaded PDF. |
+| `extractor.go` | Extract raw text from uploaded PDF. |
 | `normalizer.go` | Clean and normalize extracted text. |
-| `parser.go` | Call Resume Parser prompt and validate JSON. |
-| `validator.go` | Validate parsed resume structure. |
+| `parser.go` | Execute Resume Parser prompt and validate output. |
+| `validator.go` | Validate parsed resume JSON. |
 | `intelligence.go` | Build Technology Graph and Interview Topics. |
 
 ---
 
-# 5. Shared Package
-
-Reusable code shared across modules.
+# 5. Shared Package Structure
 
 ```text
-shared/
+internal/shared/
+│
 ├── constants/
 ├── errors/
 ├── logger/
@@ -191,16 +204,18 @@ shared/
 └── validator/
 ```
 
+### Shared Package Responsibilities
+
 | Package | Used For |
 |---------|----------|
 | `constants` | Application constants and enums. |
 | `errors` | Shared error definitions. |
 | `logger` | Zap logger wrapper. |
-| `response` | Standard API response helpers. |
+| `response` | Standard API response formatters. |
 | `validator` | Custom validation helpers. |
-| `utils` | Generic utility functions. |
+| `utils` | Generic reusable utilities. |
 
-Business logic never lives here.
+Business logic never belongs in `shared`.
 
 ---
 
@@ -208,14 +223,17 @@ Business logic never lives here.
 
 ```text
 internal/storage/
+│
 ├── postgres.go
 └── redis.go
 ```
 
+### Responsibilities
+
 | File | Responsibility |
 |------|----------------|
-| `postgres.go` | PostgreSQL connection and configuration. |
-| `redis.go` | Redis client and configuration. |
+| `postgres.go` | PostgreSQL client initialization and configuration. |
+| `redis.go` | Redis client initialization and configuration. |
 
 Repositories consume these clients.
 
@@ -225,6 +243,7 @@ Repositories consume these clients.
 
 ```text
 internal/websocket/
+│
 ├── handler.go
 ├── manager.go
 ├── client.go
@@ -232,24 +251,30 @@ internal/websocket/
 └── heartbeat.go
 ```
 
+### Responsibilities
+
 | File | Responsibility |
 |------|----------------|
-| `handler.go` | WebSocket endpoint registration. |
-| `manager.go` | Connection lifecycle and routing. |
+| `handler.go` | Registers WebSocket endpoint. |
+| `manager.go` | Connection lifecycle and message routing. |
 | `client.go` | Connected client abstraction. |
-| `events.go` | Incoming/outgoing event definitions. |
+| `events.go` | Incoming and outgoing event definitions. |
 | `heartbeat.go` | Ping/Pong keepalive handling. |
 
-Interview logic does not live in this package.
+This package contains networking only. Interview logic stays inside `interview/engine`.
 
 ---
 
-# 8. Prompt Templates
+# 8. Prompt Organization
 
-Prompt templates are versioned assets.
+All prompt-related code and prompt templates live inside the Interview Engine.
 
 ```text
-prompts/
+internal/interview/engine/prompts/
+│
+├── builder.go
+├── loader.go
+├── registry.go
 ├── resume_parser_v1.txt
 ├── intent_detector_v1.txt
 ├── guardrail_detector_v1.txt
@@ -263,7 +288,14 @@ prompts/
 └── final_evaluation_v1.txt
 ```
 
-The Interview Engine loads prompts through `engine/prompts`.
+### Design Rules
+
+- `builder.go` builds runtime prompt context.
+- `loader.go` loads embedded prompt templates using `go:embed`.
+- `registry.go` maps prompt names to prompt versions.
+- Each prompt template is independently versioned (`*_v1.txt`).
+
+This is the **only prompt location** in the repository.
 
 ---
 
@@ -272,19 +304,19 @@ The Interview Engine loads prompts through `engine/prompts`.
 The project follows one-way dependency flow.
 
 ```text
-handler
+Handler
    │
    ▼
-service
+Service
    │
    ▼
-repository
+Repository
    │
    ▼
-storage
+Storage
 ```
 
-The Interview Engine is consumed only from the service layer.
+The Interview Engine is consumed only from the **service layer**.
 
 ---
 
@@ -292,11 +324,11 @@ The Interview Engine is consumed only from the service layer.
 
 | Rule | Description |
 |------|-------------|
-| Domain-first architecture | Every business domain owns its files. |
+| Domain-first architecture | Every business domain owns its package. |
 | One package, one responsibility | No mixed business logic. |
-| No circular dependencies | Packages depend only downward. |
-| Shared package is utility-only | No business rules in `shared`. |
-| Prompt templates are not Go code | Prompt files remain under `/prompts`. |
+| No circular dependencies | Dependencies flow downward only. |
+| `shared` contains reusable utilities only | No business rules. |
+| Prompt templates stay inside `engine/prompts` | Single source of truth for prompts. |
 
 ---
 
