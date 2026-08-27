@@ -141,15 +141,19 @@ Each technology appears **once**, even if it is used in multiple projects.
       "topic_id": "redis-id",
       "name": "Redis",
       "category": "Database",
-      "difficulty": "MEDIUM",
       "confidence": 0.98
     },
     {
       "topic_id": "postgres-id",
       "name": "PostgreSQL",
       "category": "Database",
-      "difficulty": "HARD",
       "confidence": 0.96
+    },
+    {
+      "topic_id": "websocket-id",
+      "name": "WebSocket",
+      "category": "Backend",
+      "confidence": 0.97
     }
   ]
 }
@@ -167,11 +171,19 @@ Contexts reference technologies using `topic_id`.
       "context_type": "PROJECT",
       "context_name": "AI Interview Platform",
       "priority": 1,
-      "topic_ids": [
-        "redis-id",
-        "postgres-id",
-        "websocket-id",
-        "gemini-id"
+      "topics": [
+        {
+          "topic_id": "redis-id",
+          "initial_difficulty": "MEDIUM"
+        },
+        {
+          "topic_id": "postgres-id",
+          "initial_difficulty": "HARD"
+        },
+        {
+          "topic_id": "websocket-id",
+          "initial_difficulty": "MEDIUM"
+        }
       ]
     },
     {
@@ -179,10 +191,15 @@ Contexts reference technologies using `topic_id`.
       "context_type": "EXPERIENCE",
       "context_name": "Backend Internship",
       "priority": 2,
-      "topic_ids": [
-        "redis-id",
-        "kafka-id",
-        "docker-id"
+      "topics": [
+        {
+          "topic_id": "redis-id",
+          "initial_difficulty": "HARD"
+        },
+        {
+          "topic_id": "kafka-id",
+          "initial_difficulty": "MEDIUM"
+        }
       ]
     },
     {
@@ -190,8 +207,11 @@ Contexts reference technologies using `topic_id`.
       "context_type": "SKILL",
       "context_name": "Linux",
       "priority": 3,
-      "topic_ids": [
-        "linux-id"
+      "topics": [
+        {
+          "topic_id": "linux-id",
+          "initial_difficulty": "EASY"
+        }
       ]
     }
   ]
@@ -200,11 +220,14 @@ Contexts reference technologies using `topic_id`.
 
 ### Why separate Technology Graph and Interview Contexts?
 
+### Why separate Technology Graph and Interview Contexts?
+
 | Technology Graph | Interview Contexts |
 |------------------|-------------------|
-| Stores unique technologies. | Stores projects, experience, and skills. |
-| Redis exists once. | Redis can appear in multiple contexts through `topic_ids`. |
-| Shared metadata (difficulty/category). | Defines interview execution order. |
+| Stores unique technologies extracted from the resume. | Stores projects, work experience, and standalone skills. |
+| Each technology exists exactly once. | References technologies using `topic_id`. |
+| Shared metadata (`name`, `category`, `confidence`). | Defines interview priority and initial difficulty. |
+| No interview-specific information. | Used directly by the Context Manager in the Interview Engine. |
 
 ---
 
