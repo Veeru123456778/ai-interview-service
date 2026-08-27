@@ -12,19 +12,18 @@
 
 **This document owns:**
 
-- High-Level Architecture (HLD).
-- Service boundaries.
-- Communication between backend components.
-- Request lifecycle.
-- Runtime component responsibilities.
+- High-Level Architecture (HLD)
+- Service boundaries
+- Backend communication flow
+- Runtime component responsibilities
 
 **References:**
 
 - `01_tech_stack.md` → Technology choices.
-- `03_folder_structure.md` → Package structure.
+- `03_folder_structure.md` → Package organization.
 - `04_interview_engine.md` → Interview workflow.
 - `05_resume_pipeline.md` → Resume processing internals.
-- `08_redis_strategy.md` → Redis state design.
+- `08_redis_strategy.md` → Redis runtime state.
 
 ---
 
@@ -34,16 +33,16 @@
 %%{init:{
   "theme":"base",
   "themeVariables":{
-    "background":"#0F172A",
+    "background":"#FFFFFF",
     "primaryColor":"#1E3A8A",
     "primaryTextColor":"#FFFFFF",
-    "primaryBorderColor":"#FFFFFF",
+    "primaryBorderColor":"#111827",
     "secondaryColor":"#2563EB",
     "secondaryTextColor":"#FFFFFF",
-    "tertiaryColor":"#1E293B",
-    "lineColor":"#FFFFFF",
-    "fontFamily":"Inter",
-    "edgeLabelBackground":"#0F172A"
+    "tertiaryColor":"#DBEAFE",
+    "lineColor":"#111827",
+    "edgeLabelBackground":"#FFFFFF",
+    "fontFamily":"Inter"
   }
 }}%%
 
@@ -63,7 +62,7 @@ flowchart TD
 
     PG["PostgreSQL"]
 
-    REDIS["Redis"]
+    REDIS["Redis Runtime State"]
 
     USER --> API
     USER --> WS
@@ -87,11 +86,11 @@ flowchart TD
 
 | Component | Responsibility |
 |-----------|----------------|
-| **Frontend** | Upload resume, manage interview UI, speech input/output. |
-| **Interview Service** | REST APIs, authentication, session management, WebSocket entry point. |
-| **Resume Pipeline** | Parse resume and generate structured interview intelligence. |
+| **Frontend (Next.js)** | Resume upload, interview UI, speech input/output, WebSocket connection. |
+| **Interview Service** | REST APIs, authentication, session management, and request routing. |
+| **Resume Pipeline** | Convert uploaded resume into structured interview intelligence. |
 | **Interview Engine** | Execute LangGraph workflow and manage interview state. |
-| **LangChain + Gemini** | Execute prompts and return structured responses. |
+| **LangChain + Gemini** | Execute prompts and return structured JSON responses. |
 | **PostgreSQL** | Persistent application data. |
 | **Redis** | Runtime interview state and caching. |
 
@@ -101,29 +100,29 @@ flowchart TD
 
 | Storage | Owns |
 |---------|------|
-| **PostgreSQL** | Users, resumes, interview sessions, evaluations, metadata. |
+| **PostgreSQL** | Users, resumes, interview sessions, evaluations, interview metadata. |
 | **Redis** | Current topic, covered topics, candidate memory, interview timers, active session state. |
 
-Redis never becomes the source of truth.
+> PostgreSQL is the **source of truth**. Redis stores temporary runtime state only.
 
 ---
 
-# 4. Backend Request Flow
+# 4. Backend Request Lifecycle
 
 ```mermaid
 %%{init:{
   "theme":"base",
   "themeVariables":{
-    "background":"#0F172A",
+    "background":"#FFFFFF",
     "primaryColor":"#1E3A8A",
     "primaryTextColor":"#FFFFFF",
-    "primaryBorderColor":"#FFFFFF",
+    "primaryBorderColor":"#111827",
     "secondaryColor":"#2563EB",
     "secondaryTextColor":"#FFFFFF",
-    "tertiaryColor":"#1E293B",
-    "lineColor":"#FFFFFF",
-    "fontFamily":"Inter",
-    "edgeLabelBackground":"#0F172A"
+    "tertiaryColor":"#DBEAFE",
+    "lineColor":"#111827",
+    "edgeLabelBackground":"#FFFFFF",
+    "fontFamily":"Inter"
   }
 }}%%
 
@@ -145,31 +144,33 @@ sequenceDiagram
 
     User->>API: Start Interview
     API->>Engine: Initialize Session
-    Engine->>Redis: Create Runtime State
     Engine->>PG: Load Resume Intelligence
+    Engine->>Redis: Create Runtime State
     Engine->>LLM: Generate First Question
-    LLM-->>Engine: Question
-    Engine-->>User: Send Question
+    LLM-->>Engine: Structured Response
+    Engine-->>User: First Interview Question
 ```
+
+This sequence represents the complete backend flow before the interview begins.
 
 ---
 
-# 5. Interview Communication Flow
+# 5. Real-Time Interview Flow
 
 ```mermaid
 %%{init:{
   "theme":"base",
   "themeVariables":{
-    "background":"#0F172A",
+    "background":"#FFFFFF",
     "primaryColor":"#1E3A8A",
     "primaryTextColor":"#FFFFFF",
-    "primaryBorderColor":"#FFFFFF",
+    "primaryBorderColor":"#111827",
     "secondaryColor":"#2563EB",
     "secondaryTextColor":"#FFFFFF",
-    "tertiaryColor":"#1E293B",
-    "lineColor":"#FFFFFF",
-    "fontFamily":"Inter",
-    "edgeLabelBackground":"#0F172A"
+    "tertiaryColor":"#DBEAFE",
+    "lineColor":"#111827",
+    "edgeLabelBackground":"#FFFFFF",
+    "fontFamily":"Inter"
   }
 }}%%
 
@@ -181,19 +182,19 @@ sequenceDiagram
     participant Redis
     participant LLM
 
-    Frontend->>WS: Candidate message
-    WS->>Engine: Forward message
+    Frontend->>WS: Candidate Message (Text)
+    WS->>Engine: Forward Candidate Message
 
-    Engine->>Redis: Load session state
-    Engine->>LLM: Execute current prompt
-    LLM-->>Engine: Structured response
+    Engine->>Redis: Load Runtime State
+    Engine->>LLM: Execute Current Prompt
+    LLM-->>Engine: Structured JSON Response
 
-    Engine->>Redis: Update runtime state
-    Engine-->>WS: Interview response
-    WS-->>Frontend: Render response
+    Engine->>Redis: Update Runtime State
+    Engine-->>WS: Interview Response
+    WS-->>Frontend: Render Interview Response
 ```
 
-Speech is converted to text on the frontend before being sent through WebSocket.
+Speech is converted into text on the frontend using the Web Speech API before reaching the backend.
 
 ---
 
@@ -203,16 +204,16 @@ Speech is converted to text on the frontend before being sent through WebSocket.
 %%{init:{
   "theme":"base",
   "themeVariables":{
-    "background":"#0F172A",
+    "background":"#FFFFFF",
     "primaryColor":"#1E3A8A",
     "primaryTextColor":"#FFFFFF",
-    "primaryBorderColor":"#FFFFFF",
+    "primaryBorderColor":"#111827",
     "secondaryColor":"#2563EB",
     "secondaryTextColor":"#FFFFFF",
-    "tertiaryColor":"#1E293B",
-    "lineColor":"#FFFFFF",
-    "fontFamily":"Inter",
-    "edgeLabelBackground":"#0F172A"
+    "tertiaryColor":"#DBEAFE",
+    "lineColor":"#111827",
+    "edgeLabelBackground":"#FFFFFF",
+    "fontFamily":"Inter"
   }
 }}%%
 
@@ -220,7 +221,7 @@ flowchart LR
 
     PDF["Resume PDF"]
 
-    EXTRACT["Extract Text"]
+    EXTRACT["Extract & Normalize Text"]
 
     PARSE["LLM Resume Parser"]
 
@@ -234,23 +235,21 @@ flowchart LR
     BUILD --> STORE
 ```
 
-Detailed implementation is defined in **`05_resume_pipeline.md`**.
+Detailed processing logic is defined in **`05_resume_pipeline.md`**.
 
 ---
 
-# 7. Interview Engine Placement
+# 7. Service Boundaries
 
-The Interview Engine is an internal module inside the Interview Service.
+| Module | Responsibility |
+|--------|----------------|
+| **Interview Service** | Entry point for REST APIs and WebSocket connections. |
+| **Resume Pipeline** | Executes resume parsing once before interview creation. |
+| **Interview Engine** | Manages LangGraph workflow and interview progression. |
+| **WebSocket Manager** | Maintains client connections and message routing. |
+| **Storage Layer** | PostgreSQL and Redis access. |
 
-```text
-Interview Service
-    ├── Resume Pipeline
-    ├── Interview Engine
-    ├── WebSocket Manager
-    └── Storage Layer
-```
-
-The engine is responsible only for interview orchestration.
+Each module owns a single responsibility and communicates through service interfaces.
 
 ---
 
@@ -258,35 +257,33 @@ The engine is responsible only for interview orchestration.
 
 | Integration | Purpose |
 |-------------|---------|
-| Gemini | LLM reasoning. |
-| LangChain | Prompt execution and structured output parsing. |
-| Web Speech API | Speech-to-text and text-to-speech on frontend. |
+| **Gemini** | LLM reasoning and structured generation. |
+| **LangChain** | Prompt execution and structured output parsing. |
+| **Web Speech API** | Speech-to-text and text-to-speech in the browser. |
 
-No external service communicates directly with PostgreSQL or Redis.
+No external integration communicates directly with PostgreSQL or Redis.
 
 ---
 
 # 9. Architecture Principles
 
-- Stateless HTTP APIs.
-- Stateful interview sessions through Redis.
-- PostgreSQL as persistent storage.
-- LangGraph controls interview workflow.
+- Stateless REST APIs.
+- Stateful interview sessions managed through Redis.
+- PostgreSQL is the persistent source of truth.
+- LangGraph controls interview orchestration.
 - LangChain abstracts the LLM provider.
 - Resume parsing happens once before interview initialization.
 
 ---
 
-# 10. Out of Scope
+# 10. Related Documents
 
-The following are intentionally documented elsewhere.
-
-| Topic | Owner Document |
-|-------|----------------|
+| Topic | Document |
+|-------|----------|
 | Folder Structure | `03_folder_structure.md` |
 | Interview Workflow | `04_interview_engine.md` |
-| Resume Parsing Logic | `05_resume_pipeline.md` |
-| Prompt Design | `06_prompt_architecture.md` |
-| Database Tables | `07_database_schema.md` |
-| Redis Keys & TTLs | `08_redis_strategy.md` |
-| WebSocket Events | `09_websocket_protocol.md` |
+| Resume Pipeline | `05_resume_pipeline.md` |
+| Prompt Architecture | `06_prompt_architecture.md` |
+| Database Schema | `07_database_schema.md` |
+| Redis Strategy | `08_redis_strategy.md` |
+| WebSocket Protocol | `09_websocket_protocol.md` |
