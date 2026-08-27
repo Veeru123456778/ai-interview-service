@@ -171,19 +171,11 @@ Contexts reference technologies using `topic_id`.
       "context_type": "PROJECT",
       "context_name": "AI Interview Platform",
       "priority": 1,
-      "topics": [
-        {
-          "topic_id": "redis-id",
-          "initial_difficulty": "MEDIUM"
-        },
-        {
-          "topic_id": "postgres-id",
-          "initial_difficulty": "HARD"
-        },
-        {
-          "topic_id": "websocket-id",
-          "initial_difficulty": "MEDIUM"
-        }
+      "topic_ids": [
+        "redis-id",
+        "postgres-id",
+        "websocket-id",
+        "gemini-id"
       ]
     },
     {
@@ -191,15 +183,10 @@ Contexts reference technologies using `topic_id`.
       "context_type": "EXPERIENCE",
       "context_name": "Backend Internship",
       "priority": 2,
-      "topics": [
-        {
-          "topic_id": "redis-id",
-          "initial_difficulty": "HARD"
-        },
-        {
-          "topic_id": "kafka-id",
-          "initial_difficulty": "MEDIUM"
-        }
+      "topic_ids": [
+        "redis-id",
+        "kafka-id",
+        "docker-id"
       ]
     },
     {
@@ -207,18 +194,13 @@ Contexts reference technologies using `topic_id`.
       "context_type": "SKILL",
       "context_name": "Linux",
       "priority": 3,
-      "topics": [
-        {
-          "topic_id": "linux-id",
-          "initial_difficulty": "EASY"
-        }
+      "topic_ids": [
+        "linux-id"
       ]
     }
   ]
 }
 ```
-
-### Why separate Technology Graph and Interview Contexts?
 
 ### Why separate Technology Graph and Interview Contexts?
 
