@@ -31,8 +31,8 @@ Read the documents in the following order before implementation.
 | 6 | `06_prompt_architecture.md` | Prompt contracts and LLM interaction design. |
 | 7 | `07_database_schema.md` | PostgreSQL schema and persistence model. |
 | 8 | `08_redis_strategy.md` | Runtime state model in Redis. |
-| 9 | `09_websocket_protocol.md` | Real-time interview communication protocol. |
-| 10 | `10_api_spec.md` | REST API contracts. |
+| 9 | `09_api_spec.md` | REST API contracts. |
+| 10 | `10_websocket_protocol.md` | Real-time interview communication protocol. |
 | 11 | `11_auth_security.md` | Authentication and security architecture. |
 | 12 | `12_evaluation_engine.md` | Technical evaluation model and scoring. |
 | 13 | `13_observability.md` | Logging, metrics, tracing, and monitoring. |
@@ -55,8 +55,8 @@ Each concept has a single owner document. Other documents reference it instead o
 | Prompt Contracts | `06_prompt_architecture.md` |
 | Database Design | `07_database_schema.md` |
 | Redis Runtime State | `08_redis_strategy.md` |
-| WebSocket Protocol | `09_websocket_protocol.md` |
-| API Specification | `10_api_spec.md` |
+| API Specification | `09_api_spec.md` |
+| WebSocket Protocol | `10_websocket_protocol.md` |
 | Authentication & Security | `11_auth_security.md` |
 | Evaluation & Scoring | `12_evaluation_engine.md` |
 | Observability | `13_observability.md` |
