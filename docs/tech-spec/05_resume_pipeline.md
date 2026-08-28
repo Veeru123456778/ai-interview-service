@@ -90,8 +90,9 @@ flowchart LR
 | Normalize Resume | Remove formatting noise and normalize sections. |
 | Resume Parser | Convert resume text into structured JSON. |
 | Validate Resume JSON | Validate required fields and schema. |
-| Technology Graph Builder | Extract technologies and relationships. |
-| Interview Context Builder | Generate interview-ready contexts and topics. |
+| Technology Graph Builder | Extract unique technologies and build the Technology Graph. |
+| Interview Context Builder | Build project, experience, and skill contexts that reference Technology Graph topics. |
+| Resume Intelligence Builder | Combine Technology Graph and Interview Contexts into a reusable Resume Intelligence object. |
 
 ---
 
@@ -175,15 +176,15 @@ flowchart TD
 
 ## Technology Node
 
-Each technology node contains:
+A Technology Graph contains one unique node for each technology detected in the resume.
 
 | Field | Purpose |
 |-------|---------|
-| `topic_id` | Stable UUID. |
-| `name` | Technology name. |
-| `category` | Backend, Database, AI, Cloud, etc. |
-| `confidence` | Extraction confidence. |
-| `sources` | Projects or experience where it appeared. |
+| `topic_id` | Stable UUID for the technology. |
+| `name` | Normalized technology name. |
+| `category` | Backend, Database, AI, Cloud, DevOps, etc. |
+| `confidence` | Confidence score from Resume Parser extraction. |
+| `sources` | Context names where the technology appears. |
 
 Example:
 
@@ -192,12 +193,19 @@ Example:
   "topic_id": "uuid",
   "name": "Redis",
   "category": "Database",
+  "confidence": 0.98,
   "sources": [
     "AI Interview Platform",
     "Backend Internship"
   ]
 }
 ```
+
+### Design Rules
+
+- Every technology appears only once in the Technology Graph.
+- Technologies are deduplicated across projects, experience, and skills.
+- The Technology Graph never stores interview difficulty, evaluation scores, or interview progress.
 
 ---
 
@@ -227,7 +235,9 @@ Projects receive the highest interview priority because they provide the richest
 
 # 8. Interview Context Structure
 
-Each interview context contains technologies that belong to that project or experience.
+Each Interview Context represents one project, work experience, or standalone skill.
+
+A context references technologies from the Technology Graph using `topic_id`.
 
 ```json
 {
@@ -236,28 +246,21 @@ Each interview context contains technologies that belong to that project or expe
   "context_name": "AI Interview Platform",
   "description": "Real-time AI mock interview platform.",
   "priority": 1,
-
-  "topics": [
-    {
-      "topic_id": "uuid",
-      "name": "Redis",
-      "difficulty": "MEDIUM"
-    },
-    {
-      "topic_id": "uuid",
-      "name": "WebSocket",
-      "difficulty": "MEDIUM"
-    },
-    {
-      "topic_id": "uuid",
-      "name": "PostgreSQL",
-      "difficulty": "HARD"
-    }
+  "topic_ids": [
+    "redis-topic-id",
+    "websocket-topic-id",
+    "postgres-topic-id",
+    "gemini-topic-id"
   ]
 }
 ```
 
-This structure is stored in the `interview_topics` JSONB column.
+### Design Rules
+
+- Contexts reference technologies using `topic_ids`.
+- A technology may belong to multiple contexts.
+- Contexts do not store interview difficulty or evaluation state.
+- Interview difficulty is determined at runtime by the Interview Engine.
 
 ---
 
@@ -265,17 +268,20 @@ This structure is stored in the `interview_topics` JSONB column.
 
 The Interview Context Builder generates the interview plan before the interview starts.
 
+
 ## Planning Rules
 
-- Group technologies by project or work experience.
+- Group technologies by project, work experience, or standalone skill.
 - Preserve the relationship between technologies and their implementation context.
+- Generate a stable `topic_id` for each unique technology.
+- Generate a stable `context_id` for each interview context.
 - Assign interview priority to each context.
-- Assign initial difficulty to each technology.
-- Generate stable `context_id` and `topic_id`.
+- Do not assign interview difficulty during Resume Intelligence generation.
 
-The Interview Engine consumes this plan without modifying it.
+The Interview Engine generates runtime interview progression using Resume Intelligence without modifying the stored structure.
 
 ---
+
 
 # 10. Practical Question Philosophy
 
@@ -337,11 +343,15 @@ Interview creation is allowed only after successful Resume Intelligence generati
 
 | Consumer | Uses |
 |----------|------|
-| Interview Engine | Interview contexts, technologies, resume metadata. |
-| PostgreSQL | Persist Resume Intelligence. |
-| Evaluation Engine | Resume metadata for final report. |
+| Interview Engine | Technology Graph, Interview Contexts, and resume metadata. |
+| PostgreSQL | Persist Resume Intelligence and parsed resume metadata. |
+| Evaluation Engine | Resume metadata for the final interview report. |
 
 Resume Intelligence becomes read-only after successful processing.
+
+Resume Intelligence becomes read-only after successful processing.
+
+The Interview Engine reads Resume Intelligence from PostgreSQL during interview initialization, creates runtime interview state in Redis, and never modifies the stored Resume Intelligence.
 
 ---
 
