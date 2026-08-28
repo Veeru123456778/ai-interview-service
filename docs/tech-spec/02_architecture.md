@@ -105,7 +105,8 @@ flowchart LR
 | Storage | Responsibility |
 |---------|----------------|
 | **PostgreSQL** | Users, resumes, interview sessions, topic evaluations, final evaluations. |
-| **Redis** | Current topic, covered topics, candidate memory, interview timer, active session state. |
+| **Redis** | Current interview context, current topic, current scenario, current difficulty, candidate memory summary, pending question state, and active WebSocket session metadata. |
+
 
 **Design Rule**
 
@@ -211,7 +212,12 @@ flowchart LR
     BUILDER --> STORE
 ```
 
-The detailed pipeline is defined in **`05_resume_pipeline.md`**.
+The Resume Pipeline converts an uploaded resume into **Resume Intelligence**, which contains:
+
+- Technology Graph (unique technologies extracted from the resume).
+- Interview Contexts (projects, experience, and skills referencing Technology Graph topics).
+
+The detailed extraction flow is defined in `05_resume_pipeline.md`.
 
 ---
 
@@ -254,7 +260,7 @@ flowchart TD
 | Dependency | Purpose |
 |------------|---------|
 | **Redis** | Load and update active interview state. |
-| **PostgreSQL** | Read resume intelligence and persist interview results. |
+| **PostgreSQL** | Read Resume Intelligence during initialization and persist transcripts, topic evaluations, and final interview results. |
 | **LangChain + Gemini** | Execute prompt for the current LangGraph node. |
 
 ---
@@ -262,12 +268,18 @@ flowchart TD
 # 7. Service Boundaries
 
 ```text
+
 Interview Service
 ├── REST Handlers
 ├── WebSocket Manager
 ├── Resume Pipeline
 ├── Interview Engine
+│   ├── Context Manager
+│   ├── Scenario Manager
+│   ├── Difficulty Manager
+│   └── Memory Manager
 └── Storage Layer
+
 ```
 
 Each module owns one responsibility and communicates through service interfaces.
@@ -281,6 +293,7 @@ Each module owns one responsibility and communicates through service interfaces.
 | **Gemini** | LLM reasoning and structured generation. |
 | **LangChain** | Prompt execution and structured output parsing. |
 | **Web Speech API** | Speech-to-text and text-to-speech in the browser. |
+| **Supabase Auth** | User authentication and JWT issuance. |
 
 The backend receives **text only** over WebSocket.
 
@@ -294,6 +307,7 @@ The backend receives **text only** over WebSocket.
 - LangGraph orchestrates interview progression.
 - LangChain abstracts the LLM provider.
 - Resume parsing happens once before interview initialization.
+- Resume Intelligence is generated once and reused across all interview sessions for that resume.
 
 ---
 
