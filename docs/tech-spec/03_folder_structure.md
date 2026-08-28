@@ -155,7 +155,7 @@ internal/interview/
 | `nodes` | Individual LangGraph nodes (`DetectIntent`, `EvaluateAnswer`, `GenerateFollowUp`, etc.). |
 | `prompts` | Prompt builder, prompt loader, prompt registry, and versioned prompt templates. |
 | `provider` | LangChain client, Gemini integration, and structured LLM execution. |
-| `memory` | Candidate memory management and conversation summaries. |
+| `memory` | Runtime candidate memory management, topic summaries, and Redis memory synchronization. |
 | `evaluator` | Topic-level and final interview evaluation aggregation. |
 | `schemas` | Typed request/response schemas for prompt outputs. |
 | `utils` | Engine-specific helper utilities. |
@@ -179,6 +179,8 @@ internal/resume/
 └── validator.go
 ```
 
+The Resume module is responsible for converting an uploaded resume into reusable Resume Intelligence before any interview session is created.
+
 ### Resume Package Responsibilities
 
 | File | Responsibility |
@@ -187,7 +189,7 @@ internal/resume/
 | `normalizer.go` | Clean and normalize extracted text. |
 | `parser.go` | Execute Resume Parser prompt and validate output. |
 | `validator.go` | Validate parsed resume JSON. |
-| `intelligence.go` | Build Technology Graph and Interview Topics. |
+| `intelligence.go` | Build Resume Intelligence (Technology Graph and Interview Contexts). |
 
 ---
 
@@ -304,16 +306,18 @@ This is the **only prompt location** in the repository.
 The project follows one-way dependency flow.
 
 ```text
+HTTP Request
+      │
+      ▼
 Handler
-   │
-   ▼
+      │
+      ▼
 Service
-   │
-   ▼
-Repository
-   │
-   ▼
-Storage
+   ├── Interview Engine
+   └── Repository
+           │
+           ▼
+        Storage
 ```
 
 The Interview Engine is consumed only from the **service layer**.
