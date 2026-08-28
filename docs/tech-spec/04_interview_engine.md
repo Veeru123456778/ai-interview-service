@@ -50,6 +50,8 @@ The LLM generates questions and responses, while the Interview Engine decides **
 
 # 2. Engine Architecture
 
+## Runtime Workflow
+
 ```mermaid
 %%{init:{
   "theme":"base",
@@ -70,39 +72,35 @@ The LLM generates questions and responses, while the Interview Engine decides **
 flowchart TD
 
     START["Start Interview"]
-
     INIT["Initialize Session"]
-
-    CONTEXT["Context Manager"]
-
-    SCENARIO["Scenario Manager"]
-
-    DIFFICULTY["Difficulty Manager"]
-
+    CONTEXT["Resolve Resume Context"]
+    SCENARIO["Select Scenario"]
     QUESTION["Generate Question"]
 
+    MESSAGE["Candidate Message"]
+
     INTENT["Detect Candidate Intent"]
-
     ACTION["Execute Interview Action"]
-
+    EVALUATE["Analyze Technical Answer"]
     MEMORY["Update Candidate Memory"]
-
-    EVALUATE["Evaluate Answer"]
-
-    NEXT["Next Question / Next Context"]
+    DIFFICULTY["Decide Difficulty"]
+    NEXT["Transition Topic / Context"]
 
     FINAL["Generate Final Evaluation"]
 
     START --> INIT
     INIT --> CONTEXT
     CONTEXT --> SCENARIO
-    SCENARIO --> DIFFICULTY
-    DIFFICULTY --> QUESTION
-    QUESTION --> INTENT
+    SCENARIO --> QUESTION
+    QUESTION --> MESSAGE
+
+    MESSAGE --> INTENT
     INTENT --> ACTION
-    ACTION --> MEMORY
-    MEMORY --> EVALUATE
-    EVALUATE --> NEXT
+    ACTION --> EVALUATE
+    EVALUATE --> MEMORY
+    MEMORY --> DIFFICULTY
+    DIFFICULTY --> NEXT
+
     NEXT --> SCENARIO
     NEXT --> CONTEXT
     NEXT --> FINAL
@@ -130,21 +128,23 @@ Projects receive the highest priority because they provide implementation contex
 
 | Node | Responsibility |
 |------|----------------|
-| `InitializeSession` | Load Resume Intelligence and runtime state. |
-| `SelectContext` | Choose project, experience, or skill context. |
-| `SelectScenario` | Choose scenario type for current topic. |
-| `GenerateQuestion` | Generate interview question. |
-| `DetectCandidateIntent` | Classify candidate message. |
+| `InitializeSession` | Load Resume Intelligence and initialize runtime Redis state. |
+| `ResolveResumeContext` | Resolve the active project, experience, or skill context from Resume Intelligence. |
+| `SelectContext` | Select the next interview context when a transition is required. |
+| `SelectScenario` | Select the next scenario for the current topic. |
+| `GenerateQuestion` | Generate a context-aware interview question. |
+| `DetectCandidateIntent` | Classify the candidate's message into an interview intent. |
 | `GuardrailCheck` | Detect prompt injection and unsupported requests. |
-| `GenerateClarification` | Rephrase current question. |
-| `GenerateHint` | Generate hint. |
-| `AnalyzeTechnicalAnswer` | Evaluate answer. |
-| `UpdateCandidateMemory` | Update interview memory. |
-| `TransitionContext` | Move to next topic or context. |
-| `BehavioralDiscussion` | Generate behavioral questions. |
-| `GenerateFinalEvaluation` | Produce interview report. |
+| `GenerateClarification` | Rephrase the current interview question. |
+| `GenerateHint` | Generate a directional hint without revealing the answer. |
+| `AnalyzeTechnicalAnswer` | Evaluate the technical quality of the candidate's answer. |
+| `UpdateCandidateMemory` | Update runtime candidate memory in Redis. |
+| `DecideDifficulty` | Increase, decrease, or retain difficulty after evaluation. |
+| `TransitionContext` | Move to the next topic or interview context. |
+| `BehavioralDiscussion` | Generate behavioral interview questions. |
+| `GenerateFinalEvaluation` | Generate the final interview report. |
 
-Each node executes exactly one responsibility.
+Each node owns exactly one deterministic responsibility. Nodes communicate only through the shared LangGraph runtime state and never call each other directly.
 
 ---
 
@@ -172,25 +172,20 @@ Every candidate message follows the same deterministic flow.
 flowchart LR
 
     MESSAGE["Candidate Message"]
-
     INTENT["Intent Detection"]
-
     ACTION["Interview Action"]
-
-    MEMORY["Memory Update"]
-
     EVALUATION["Answer Evaluation"]
-
+    MEMORY["Memory Update"]
     RESPONSE["Interviewer Response"]
 
     MESSAGE --> INTENT
     INTENT --> ACTION
-    ACTION --> MEMORY
-    MEMORY --> EVALUATION
-    EVALUATION --> RESPONSE
+    ACTION --> EVALUATION
+    EVALUATION --> MEMORY
+    MEMORY --> RESPONSE
 ```
 
-This loop repeats until interview completion.
+Every candidate response follows this deterministic loop until the interview reaches a completion condition.
 
 ---
 
@@ -207,6 +202,31 @@ The Context Manager selects **where** the interview is currently focused.
 | `SKILL` | Linux, Git, OOP |
 
 Contexts come directly from Resume Intelligence.
+
+### Context Resolution
+
+Each interview context references one or more technologies from the Technology Graph stored in Resume Intelligence.
+
+The Context Manager always selects a context first and then asks questions only about technologies that belong to that context.
+
+Example:
+
+```text
+Project: AI Interview Platform
+Topics:
+- Redis
+- WebSocket
+- PostgreSQL
+- Gemini
+
+Experience: Backend Internship
+Topics:
+- Kafka
+- Docker
+- Spring Boot
+```
+
+A technology may appear in multiple contexts. The Interview Engine always generates questions using the active context instead of treating the technology as globally shared.
 
 ## Context Selection Rules
 
@@ -255,6 +275,30 @@ The Scenario Manager decides **what kind of question** should be asked for the c
 | `CONCURRENCY` | Parallel execution and synchronization. |
 | `TRADE_OFF` | Compare design decisions and alternatives. |
 
+
+### Practical Questioning Principle
+
+Questions are always grounded in the candidate's implementation context.
+
+The engine prefers production-oriented questions over definition-based questions.
+
+Examples:
+
+```text
+Topic: Redis
+
+❌ "What is Redis?"
+
+✅ "Your interview sessions are stored in Redis. What happens if cache misses suddenly increase?"
+
+❌ "Why did you use WebSockets?"
+
+✅ "How would you recover active WebSocket sessions after a Redis restart?"
+```
+
+The Scenario Manager chooses scenarios that naturally evolve from the candidate's previous answer instead of asking unrelated questions.
+
+
 ## Scenario Selection Rules
 
 - Rotate scenarios within a context.
@@ -288,9 +332,11 @@ Difficulty controls question depth, not topic selection.
 
 ## Difficulty Rules
 
-- Strong answer → Increase difficulty.
-- Weak answer → Explore current topic before increasing difficulty.
-- Difficulty progression happens within the same context whenever possible.
+- Strong answer → Increase difficulty within the current context.
+- Partial answer → Stay on the same topic and ask a deeper follow-up question.
+- Weak answer → Ask a clarification or hint before increasing difficulty.
+- Difficulty changes only after answer evaluation.
+- Difficulty resets to the baseline for a new interview context.
 
 ---
 
@@ -302,14 +348,18 @@ Candidate Memory summarizes interview progress without storing the full transcri
 
 | Memory | Purpose |
 |--------|---------|
-| Current Context | Active project or experience. |
-| Current Topic | Active technology. |
-| Covered Topics | Completed technologies. |
-| Strengths | Strong concepts demonstrated. |
-| Weaknesses | Missing concepts. |
-| Conversation Summary | Condensed history. |
+| Current Context | Active project, experience, or skill context. |
+| Current Topic | Active technology within the current context. |
+| Covered Topics | Completed technologies for the current context. |
+| Strengths | Concepts the candidate demonstrated confidently. |
+| Weaknesses | Concepts requiring additional follow-up questions. |
+| Conversation Summary | Condensed interview history sent to the LLM. |
+| Scenario History | Recently used scenarios to avoid repetition. |
+| Difficulty History | Recent difficulty progression for adaptive questioning. |
 
-Memory is updated after every evaluated answer.
+Candidate Memory stores only runtime interview knowledge.
+
+The full transcript is persisted in PostgreSQL, while Redis stores only the condensed runtime memory required by the Interview Engine.
 
 Redis implementation is defined in `08_redis_strategy.md`.
 
@@ -387,7 +437,24 @@ WebSocket
 PostgreSQL
 ```
 
-Move only after the current topic is sufficiently evaluated.
+Move only after the current topic satisfies one of the following conditions:
+
+- The candidate demonstrates sufficient understanding.
+- The maximum follow-up depth is reached.
+- The candidate repeatedly cannot answer despite clarification or hints.
+
+### Follow-up Depth
+
+The Interview Engine limits follow-ups for a single topic.
+
+| Candidate Performance | Follow-up Strategy |
+|-----------------------|--------------------|
+| Strong answer | 0–1 follow-up question. |
+| Partial answer | 1–3 progressively deeper follow-up questions. |
+| Weak answer | Clarification or hint, then transition if no progress is made. |
+
+This prevents the interview from getting stuck on one technology while still exploring depth where needed.
+
 
 ## Transition Between Contexts
 
