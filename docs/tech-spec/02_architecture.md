@@ -105,8 +105,7 @@ flowchart LR
 | Storage | Responsibility |
 |---------|----------------|
 | **PostgreSQL** | Users, resumes, interview sessions, topic evaluations, final evaluations. |
-| **Redis** | Current interview context, current topic, current scenario, current difficulty, candidate memory summary, pending question state, and active WebSocket session metadata. |
-
+| **Redis** | Active interview runtime state including current interview context, current topic, current scenario, current difficulty, candidate memory summary, pending question state, and active WebSocket session metadata. |
 
 **Design Rule**
 
@@ -277,7 +276,8 @@ Interview Service
 │   ├── Context Manager
 │   ├── Scenario Manager
 │   ├── Difficulty Manager
-│   └── Memory Manager
+│   ├── Memory Manager
+│   └── Evaluation Manager
 └── Storage Layer
 
 ```
