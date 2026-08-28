@@ -35,6 +35,8 @@
 | Framework | **Gin** | Lightweight HTTP framework with middleware support. |
 | ORM | **GORM** | PostgreSQL integration and migrations. |
 | API Style | **REST + WebSocket** | REST for APIs, WebSocket for real-time interview. |
+| Authentication | Supabase Auth | User authentication and JWT issuance. |
+| Authorization | JWT Verification | Verify Supabase-issued JWTs inside Gin middleware. |
 
 ---
 
@@ -44,7 +46,7 @@
 |-------|------------|-----|
 | Workflow Engine | **LangGraph** | Deterministic interview workflow orchestration. |
 | LLM Abstraction | **LangChain (Go)** | Provider abstraction and structured output parsing. |
-| Initial LLM | **Gemini 2.5 Pro** | Strong reasoning with free quota for V1. |
+| Initial LLM | **Gemini 2.5 Flash** | Fast, low-latency LLM for interview generation, evaluation, and resume intelligence in V1. |
 
 ### AI Design Decisions
 
@@ -52,6 +54,7 @@
 - LangChain is used only for LLM interaction.
 - Prompt templates are versioned independently.
 - Backend owns memory and orchestration.
+- The interview engine is provider-agnostic through LangChain-Go. Gemini 2.5 Flash is the default provider for V1 and can be replaced without changing the workflow.
 
 ---
 
@@ -68,8 +71,7 @@
 | Storage | Owns |
 |---------|------|
 | PostgreSQL | Users, resumes, interview sessions, evaluations. |
-| Redis | Active interview state, current topic, memory, timers. |
-
+| Redis | Active interview state, current context, current topic, current scenario, candidate memory summary, and WebSocket session metadata. |
 ---
 
 # 4. Frontend Integration
@@ -79,7 +81,7 @@
 | Frontend | Next.js |
 | UI Components | ShadCN UI |
 | Styling | Tailwind CSS |
-| Authentication | JWT |
+| Authentication | Supabase Auth + JWT |
 | Speech-to-Text | Web Speech API |
 | Text-to-Speech | Web Speech API |
 
@@ -138,8 +140,8 @@ Detailed design is defined in `13_observability.md`.
 
 | Purpose | Technology |
 |---------|------------|
-| Authentication | JWT |
-| Password Hashing | bcrypt |
+| Authentication | Supabase Auth |
+| Authorization | JWT Verification Middleware |
 | Environment Secrets | `.env` + Config Loader |
 | API Validation | Gin Binding + Custom Validators |
 
@@ -156,7 +158,7 @@ Detailed rules are defined in `11_auth_security.md`.
 | PostgreSQL | 17 |
 | Redis | 8 |
 | LangChain Go | Latest stable |
-| LangGraph | Latest stable |
+| LangGraph (Go) | Latest stable |
 | Gemini | Gemini 2.5 Pro |
 
 Minor dependency updates are allowed during V1 without changing architecture.
