@@ -8,6 +8,7 @@ import (
 	"github.com/Veeru123456778/ai-interview-service/internal/app"
 	"github.com/Veeru123456778/ai-interview-service/internal/storage"
 	"github.com/Veeru123456778/ai-interview-service/internal/shared/logger"
+	"go.uber.org/zap"
 )
 
 func main() {
