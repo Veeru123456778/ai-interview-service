@@ -301,7 +301,7 @@ Stores evaluation after a technology discussion is completed.
 | `id` | UUID | Primary Key |
 | `session_id` | UUID | FK → interview_sessions |
 | `topic_id` | UUID | Technology evaluated |
-| `difficulty_level` | VARCHAR(20) | `EASY`, `MEDIUM`, `HARD` |
+| `difficulty_reached` | VARCHAR(20) | `EASY`, `MEDIUM`, `HARD` |
 | `technical_score` | SMALLINT | 1–5 |
 | `depth_score` | SMALLINT | 1–5 |
 | `reasoning_score` | SMALLINT | 1–5 |
