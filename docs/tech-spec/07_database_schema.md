@@ -99,6 +99,9 @@ Stores application users.
 | `created_at` | TIMESTAMP | Creation time |
 | `updated_at` | TIMESTAMP | Last update |
 
+- `supabase_user_id` references the authenticated user in `auth.users`.
+- `id` is the application's internal UUID used throughout business tables.
+
 ### Constraints
 
 - Primary Key → `id`
@@ -204,12 +207,14 @@ Contexts reference technologies using `topic_id`.
 
 ### Why separate Technology Graph and Interview Contexts?
 
+
 | Technology Graph | Interview Contexts |
 |------------------|-------------------|
 | Stores unique technologies extracted from the resume. | Stores projects, work experience, and standalone skills. |
 | Each technology exists exactly once. | References technologies using `topic_id`. |
-| Shared metadata (`name`, `category`, `confidence`). | Defines interview priority and initial difficulty. |
+| Shared metadata (`name`, `category`, `confidence`). | Defines interview priority and technology grouping for each context. |
 | No interview-specific information. | Used directly by the Context Manager in the Interview Engine. |
+
 
 ---
 
@@ -250,6 +255,18 @@ Stores the permanent interview transcript.
 | `scenario_type` | VARCHAR(30) | Current interview scenario |
 | `content` | TEXT | Message content |
 | `created_at` | TIMESTAMP | Message timestamp |
+
+`message_type` identifies whether the message is a QUESTION, ANSWER, HINT, CLARIFICATION, THINKING, SYSTEM, or BEHAVIORAL event.
+
+### Ordering Rules
+
+Conversation replay always uses:
+
+1. `session_id`
+2. `created_at`
+3. `id` (tie-breaker)
+
+This guarantees deterministic transcript reconstruction even when multiple messages share the same timestamp.
 
 ### Scenario Types
 
@@ -311,6 +328,37 @@ One evaluation per technology per interview session.
 ```text
 (session_id, topic_id)
 ```
+
+### Foreign Key Delete Rules
+
+| Relationship | Delete Rule |
+|--------------|-------------|
+| users → resumes | ON DELETE CASCADE |
+| users → interview_sessions | ON DELETE CASCADE |
+| resumes → interview_sessions | ON DELETE RESTRICT |
+| interview_sessions → conversation_messages | ON DELETE CASCADE |
+| interview_sessions → topic_evaluations | ON DELETE CASCADE |
+| interview_sessions → final_evaluations | ON DELETE CASCADE |
+
+### Why?
+
+- Deleting a user removes all owned data.
+- A resume cannot be deleted while interview history references it.
+- Deleting an interview session removes transcripts and evaluations automatically.
+
+
+
+### CHECK Constraints
+
+| Column | Constraint |
+|--------|------------|
+| technical_score | BETWEEN 1 AND 5 |
+| depth_score | BETWEEN 1 AND 5 |
+| reasoning_score | BETWEEN 1 AND 5 |
+| communication_score | BETWEEN 1 AND 5 |
+| overall_score | BETWEEN 0 AND 100 |
+| status columns | Allowed enum values only. |
+
 
 ---
 
@@ -397,6 +445,12 @@ Redis never stores permanent interview history.
 | `learning_recommendations` | Variable recommendation list. |
 
 All evaluation scores remain typed SQL columns.
+
+### JSONB Validation Rules
+
+Every JSONB document is validated against typed Go schemas before persistence.
+
+Invalid Resume Intelligence or evaluation payloads are never stored.
 
 ---
 
