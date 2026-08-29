@@ -159,7 +159,7 @@ Detailed rules are defined in `11_auth_security.md`.
 | Redis | 8 |
 | LangChain Go | Latest stable |
 | LangGraph (Go) | Latest stable |
-| Gemini | Gemini 2.5 Pro |
+| Gemini | Gemini 2.5 Flash |
 
 Minor dependency updates are allowed during V1 without changing architecture.
 
