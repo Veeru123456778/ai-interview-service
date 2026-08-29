@@ -321,4 +321,4 @@ The backend receives **text only** over WebSocket.
 | Prompt Architecture | `06_prompt_architecture.md` |
 | Database Schema | `07_database_schema.md` |
 | Redis Strategy | `08_redis_strategy.md` |
-| WebSocket Protocol | `09_websocket_protocol.md` |
+| WebSocket Protocol | `10_websocket_protocol.md` |

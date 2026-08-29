@@ -44,13 +44,26 @@ WebSocket is responsible only for exchanging interview events while a session is
 GET /api/v1/ws/interviews/{sessionId}
 ```
 
+
 ### Authentication
 
-The client connects using the authenticated session created through REST.
+The WebSocket connection is authenticated during the initial handshake using the Supabase access token.
 
-```
-Authorization: Bearer <jwt-token>
-```
+**Endpoint**
+
+GET /api/v1/ws/interviews/{sessionId}
+
+**Handshake Header**
+
+Sec-WebSocket-Protocol: bearer,<access-token>
+
+The backend:
+
+1. Extracts the access token from the WebSocket handshake.
+2. Verifies the JWT using Supabase.
+3. Validates that the interview session belongs to the authenticated user.
+4. Upgrades the connection only after successful authentication.
+
 
 ### Connection Flow
 

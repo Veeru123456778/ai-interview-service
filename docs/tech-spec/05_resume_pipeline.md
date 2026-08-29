@@ -349,8 +349,6 @@ Interview creation is allowed only after successful Resume Intelligence generati
 
 Resume Intelligence becomes read-only after successful processing.
 
-Resume Intelligence becomes read-only after successful processing.
-
 The Interview Engine reads Resume Intelligence from PostgreSQL during interview initialization, creates runtime interview state in Redis, and never modifies the stored Resume Intelligence.
 
 ---

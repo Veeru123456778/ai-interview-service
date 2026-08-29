@@ -354,8 +354,7 @@ Candidate Memory summarizes interview progress without storing the full transcri
 | Strengths | Concepts the candidate demonstrated confidently. |
 | Weaknesses | Concepts requiring additional follow-up questions. |
 | Conversation Summary | Condensed interview history sent to the LLM. |
-| Scenario History | Recently used scenarios to avoid repetition. |
-| Difficulty History | Recent difficulty progression for adaptive questioning. |
+
 
 Candidate Memory stores only runtime interview knowledge.
 

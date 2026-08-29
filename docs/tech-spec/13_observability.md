@@ -249,7 +249,7 @@ Gemini calls are monitored without logging prompt contents.
 {
   "operation": "GeminiRequest",
   "prompt": "technical_question_v1",
-  "model": "gemini-2.5-flash-lite",
+  "model": "gemini-2.5-flash",
   "latency_ms": 540,
   "status": "SUCCESS"
 }

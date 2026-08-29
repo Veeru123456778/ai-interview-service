@@ -140,7 +140,7 @@ session:{sessionId}
 | `pending_question` | Current interviewer question awaiting the candidate's answer. |
 | `covered_topic_ids` | Topics completed during the interview. |
 | `question_count` | Number of interviewer questions asked so far. |
-| `status` | ACTIVE, PAUSED, COMPLETED, or ABANDONED. |
+| `status` | ACTIVE, COMPLETED, or ABANDONED. |
 | `last_activity_at` | Timestamp of the most recent interview activity. |
 
 ### Design Rules
@@ -364,4 +364,4 @@ Redis allows Interview Engine instances to remain stateless while preserving int
 | Interview Engine | `04_interview_engine.md` |
 | Prompt Architecture | `06_prompt_architecture.md` |
 | Database Schema | `07_database_schema.md` |
-| WebSocket Protocol | `09_websocket_protocol.md` |
+| WebSocket Protocol | `10_websocket_protocol.md` |

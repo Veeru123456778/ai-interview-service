@@ -185,7 +185,7 @@ SUPABASE_JWT_SECRET=your_supabase_jwt_secret
 
 GEMINI_API_KEY=your_gemini_api_key
 
-GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 `.env.example` contains placeholders only.
@@ -278,6 +278,15 @@ Deployment platform uses readiness before routing traffic.
 # 12. Deployment Pipeline (CI/CD)
 
 Deployment pipeline runs automatically after successful builds.
+
+## Deployment Environments
+
+| Environment | Purpose |
+|-------------|---------|
+| Development | Local Docker Compose with PostgreSQL and Redis. |
+| Staging | Production-like environment for testing before release. |
+| Production | Live deployment connected to managed PostgreSQL, Redis, Supabase, and Gemini. |
+
 
 ## Pipeline Stages
 

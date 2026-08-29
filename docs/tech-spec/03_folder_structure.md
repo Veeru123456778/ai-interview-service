@@ -280,6 +280,7 @@ internal/interview/engine/prompts/
 ├── resume_parser_v1.txt
 ├── intent_detector_v1.txt
 ├── guardrail_detector_v1.txt
+├── technical_question_v1.txt
 ├── technical_evaluator_v1.txt
 ├── followup_generator_v1.txt
 ├── clarification_generator_v1.txt

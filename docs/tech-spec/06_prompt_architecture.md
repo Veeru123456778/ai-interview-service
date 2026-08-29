@@ -148,8 +148,6 @@ Prompt Builder injects runtime context before execution.
 | Difficulty Level | Interview Engine |
 | Candidate Message | WebSocket |
 | Candidate Memory Summary | Redis |
-| Scenario History | Redis Candidate Memory |
-
 
 Prompt Builder injects only the runtime context required by the current LangGraph node.
 
