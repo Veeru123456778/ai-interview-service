@@ -1,0 +1,24 @@
+app:
+  name: ai-interview-service
+  environment: development
+
+server:
+  port: 8080
+  read_timeout_seconds: 10
+  write_timeout_seconds: 10
+  idle_timeout_seconds: 60
+
+resume:
+  max_upload_size_mb: 10
+
+redis:
+  session_ttl_hours: 24
+  websocket_ttl_minutes: 30
+
+websocket:
+  heartbeat_interval_seconds: 30
+  pong_timeout_seconds: 10
+
+gemini:
+  timeout_seconds: 60
+  max_retries: 2

@@ -1,0 +1,14 @@
+resume_parser: resume_parser_v1
+intent_detector: intent_detector_v1
+guardrail_detector: guardrail_detector_v1
+
+technical_question: technical_question_v1
+technical_evaluator: technical_evaluator_v1
+
+followup_generator: followup_generator_v1
+clarification_generator: clarification_generator_v1
+hint_generator: hint_generator_v1
+thinking_prompt: thinking_prompt_v1
+topic_transition: topic_transition_v1
+behavioral_generator: behavioral_generator_v1
+final_evaluation: final_evaluation_v1
