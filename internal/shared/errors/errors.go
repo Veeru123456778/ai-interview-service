@@ -46,4 +46,28 @@ var (
 		Message:    "Something went wrong.",
 		StatusCode: 500,
 	}
+
+	ErrResumeNotFound = &AppError{
+	Code:       "RESUME_NOT_FOUND",
+	Message:    "Resume not found.",
+	StatusCode: 404,
+}
+
+	ErrResumeExtractionFailed = &AppError{
+		Code:       "RESUME_EXTRACTION_FAILED",
+		Message:    "Unable to extract text from resume.",
+		StatusCode: 422,
+	}
+
+	ErrResumeParserFailed = &AppError{
+		Code:       "RESUME_PARSER_FAILED",
+		Message:    "Unable to parse resume.",
+		StatusCode: 422,
+	}
+
+	ErrResumeProcessingFailed = &AppError{
+		Code:       "RESUME_PROCESSING_FAILED",
+		Message:    "Resume processing failed.",
+		StatusCode: 500,
+	}
 )

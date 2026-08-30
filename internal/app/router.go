@@ -4,6 +4,9 @@ import (
 	"time"
 
 	"github.com/Veeru123456778/ai-interview-service/internal/health"
+	"github.com/Veeru123456778/ai-interview-service/internal/middleware"
+	"github.com/Veeru123456778/ai-interview-service/internal/resume"
+	"github.com/Veeru123456778/ai-interview-service/internal/auth"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,9 +19,11 @@ func NewRouter(application *Application) *gin.Engine {
 
 	router := gin.New()
 
-	// Global middleware
 	router.Use(gin.Recovery())
-	router.Use(gin.Logger())
+
+	router.Use(middleware.RequestID())
+
+	router.Use(middleware.Logger(application.Logger))
 
 	// Max resume upload size
 	router.MaxMultipartMemory = int64(application.Config.Resume.MaxUploadSizeMB) << 20
@@ -51,13 +56,32 @@ func NewRouter(application *Application) *gin.Engine {
 	health.RegisterRoutes(router, healthService)
 
 	// -------------------------
-	// Future Modules
+	// Resume Module
 	// -------------------------
-	// auth.RegisterRoutes(router, ...)
-	// resume.RegisterRoutes(router, ...)
-	// interview.RegisterRoutes(router, ...)
-	// user.RegisterRoutes(router, ...)
-	// websocket.RegisterRoutes(router, ...)
+	resumeRepository := resume.NewRepository(application.DB)
+
+	resumeExtractor := resume.NewExtractor()
+	resumeNormalizer := resume.NewNormalizer()
+	resumeBuilder := resume.NewIntelligenceBuilder()
+
+	// Parser will be initialized after the LLM provider is implemented.
+	var resumeParser resume.Parser = nil
+
+	resumeService := resume.NewService(
+		resumeRepository,
+		resumeExtractor,
+		resumeNormalizer,
+		resumeParser,
+		resumeBuilder,
+	)
+
+	authService := auth.NewService(application.Config.Supabase.JWTSecret)
+
+	api := router.Group("/api/v1")
+	api.Use(middleware.AuthMiddleware(authService))
+
+	resume.RegisterRoutes(api, resumeService)
+
 
 	return router
 }
