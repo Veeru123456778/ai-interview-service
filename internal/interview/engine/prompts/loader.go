@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+//go:embed *.txt
+
 var promptFS embed.FS
 
 type Loader struct{}
