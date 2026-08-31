@@ -78,16 +78,21 @@ func (b *contextBuilder) BuildInitialState(
 
 		CurrentDifficulty: constants.DifficultyEasy,
 
-		AskedQuestions:     []string{},
-		CompletedTopics:    []string{},
+		// Resume Intelligence
+		TechnologyGraph:   technologyGraph,
+		InterviewContexts: interviewContexts,
+
+		AskedQuestions:      []string{},
+		CompletedTopics:     []string{},
 		ConversationHistory: []ConversationMessage{},
-		TopicScores:        buildInitialTopicScores(technologyGraph),
+		TopicScores:         buildInitialTopicScores(technologyGraph),
 
 		StartedAt:     now,
 		LastUpdatedAt: now,
 		ExpiresAt:     now.Add(60 * time.Minute),
 	}
 
+	// Select first topic from first interview context.
 	if len(interviewContexts) > 0 && len(interviewContexts[0].TopicIDs) > 0 {
 		state.CurrentTopicID = interviewContexts[0].TopicIDs[0]
 	}

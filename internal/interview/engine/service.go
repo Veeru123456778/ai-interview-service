@@ -1,3 +1,171 @@
+// package engine
+
+// import (
+// 	"context"
+// 	"fmt"
+// 	"time"
+
+// 	"github.com/Veeru123456778/ai-interview-service/internal/shared/constants"
+// )
+
+// // ----------------------------------------------------------------------
+// // Service Interface
+// // ----------------------------------------------------------------------
+
+// type Service interface {
+// 	InitializeInterview(
+// 		ctx context.Context,
+// 		interviewID string,
+// 		userID string,
+// 		resumeID string,
+// 		resumeContext *ResumeContext,
+// 	) (*InterviewState, error)
+
+// 	ProcessCandidateResponse(
+// 		ctx context.Context,
+// 		state *InterviewState,
+// 		candidateAnswer string,
+// 	) (*InterviewState, error)
+
+// 	CompleteInterview(
+// 		ctx context.Context,
+// 		state *InterviewState,
+// 	) (*InterviewState, error)
+// }
+
+// // ----------------------------------------------------------------------
+// // Service Implementation
+// // ----------------------------------------------------------------------
+
+// type service struct {
+// 	graph          Graph
+// 	contextBuilder ContextBuilder
+// 	repository     Repository // Redis InterviewState repository
+// }
+
+// func NewService(
+// 	graph Graph,
+// 	contextBuilder ContextBuilder,
+// 	repository Repository,
+// ) Service {
+// 	return &service{
+// 		graph:          graph,
+// 		contextBuilder: contextBuilder,
+// 		repository:     repository,
+// 	}
+// }
+
+// // ----------------------------------------------------------------------
+// // Initialize Interview
+// // ----------------------------------------------------------------------
+
+// func (s *service) InitializeInterview(
+// 	ctx context.Context,
+// 	interviewID string,
+// 	userID string,
+// 	resumeID string,
+// 	resumeContext *ResumeContext,
+// ) (*InterviewState, error) {
+
+// 	now := time.Now().UTC()
+
+// 	state := &InterviewState{
+// 		InterviewID: interviewID,
+// 		UserID:      userID,
+// 		ResumeID:    resumeID,
+
+// 		Status: constants.InterviewInProgress,
+
+// 		CurrentDifficulty: constants.DifficultyMedium,
+
+// 		AskedQuestions:      []string{},
+// 		CompletedTopics:     []string{},
+// 		ConversationHistory: []ConversationMessage{},
+// 		TopicScores:         []TopicScore{},
+
+// 		StartedAt:     now,
+// 		LastUpdatedAt: now,
+// 		ExpiresAt:     now.Add(2 * time.Hour),
+// 	}
+
+// 	// Copy Resume Intelligence into InterviewState.
+// 	if err := s.contextBuilder.BuildInterviewContext(
+// 		state,
+// 		resumeContext,
+// 	); err != nil {
+// 		return nil, fmt.Errorf("build interview context: %w", err)
+// 	}
+
+// 	// Run initialization nodes (context selection + first question).
+// 	if err := s.graph.Initialize(ctx, state); err != nil {
+// 		return nil, fmt.Errorf("initialize interview graph: %w", err)
+// 	}
+
+// 	// Persist initial state to Redis.
+// 	if err := s.repository.SaveState(ctx, state); err != nil {
+// 		return nil, fmt.Errorf("save interview state: %w", err)
+// 	}
+
+// 	return state, nil
+// }
+
+// // ----------------------------------------------------------------------
+// // Process Candidate Response
+// // ----------------------------------------------------------------------
+
+// func (s *service) ProcessCandidateResponse(
+// 	ctx context.Context,
+// 	state *InterviewState,
+// 	candidateAnswer string,
+// ) (*InterviewState, error) {
+
+// 	state.ConversationHistory = append(
+// 		state.ConversationHistory,
+// 		ConversationMessage{
+// 			Role:       "CANDIDATE",
+// 			Content:    candidateAnswer,
+// 			QuestionID: state.CurrentQuestionID,
+// 			TopicID:    state.CurrentTopicID,
+// 			CreatedAt:  time.Now().UTC(),
+// 		},
+// 	)
+
+// 	state.LastUpdatedAt = time.Now().UTC()
+
+// 	if err := s.graph.ProcessTurn(ctx, state); err != nil {
+// 		return nil, fmt.Errorf("process interview turn: %w", err)
+// 	}
+
+// 	if err := s.repository.SaveState(ctx, state); err != nil {
+// 		return nil, fmt.Errorf("save interview state: %w", err)
+// 	}
+
+// 	return state, nil
+// }
+
+// // ----------------------------------------------------------------------
+// // Complete Interview
+// // ----------------------------------------------------------------------
+
+// func (s *service) CompleteInterview(
+// 	ctx context.Context,
+// 	state *InterviewState,
+// ) (*InterviewState, error) {
+
+// 	state.Status = constants.InterviewCompleted
+// 	state.LastUpdatedAt = time.Now().UTC()
+
+// 	if err := s.graph.GenerateFinalEvaluation(ctx, state); err != nil {
+// 		return nil, fmt.Errorf("generate final evaluation: %w", err)
+// 	}
+
+// 	if err := s.repository.DeleteState(ctx, state.InterviewID); err != nil {
+// 		return nil, fmt.Errorf("delete interview state: %w", err)
+// 	}
+
+// 	return state, nil
+// }
+
 package engine
 
 import (
@@ -8,64 +176,75 @@ import (
 	"github.com/Veeru123456778/ai-interview-service/internal/shared/constants"
 )
 
+// ----------------------------------------------------------------------
+// Service Interface
+// ----------------------------------------------------------------------
+
 type Service interface {
-	StartInterview(
+	InitializeInterview(
 		ctx context.Context,
 		interviewID string,
 		userID string,
 		resumeID string,
 	) (*InterviewState, error)
 
-	GetInterviewState(
-		ctx context.Context,
-		interviewID string,
-	) (*InterviewState, error)
-
-	SaveInterviewState(
+	ProcessCandidateResponse(
 		ctx context.Context,
 		state *InterviewState,
-	) error
+		candidateAnswer string,
+	) (*InterviewState, error)
 
-	EndInterview(
+	CompleteInterview(
 		ctx context.Context,
-		interviewID string,
-	) error
+		state *InterviewState,
+	) (*InterviewState, error)
 }
 
+// ----------------------------------------------------------------------
+// Service Implementation
+// ----------------------------------------------------------------------
+
 type service struct {
-	repository Repository
-	builder    ContextBuilder
+	graph          Graph
+	contextBuilder ContextBuilder
+	repository     Repository // Redis InterviewState repository
 }
 
 func NewService(
+	graph Graph,
+	contextBuilder ContextBuilder,
 	repository Repository,
-	builder ContextBuilder,
 ) Service {
 	return &service{
-		repository: repository,
-		builder:    builder,
+		graph:          graph,
+		contextBuilder: contextBuilder,
+		repository:     repository,
 	}
 }
 
 // ----------------------------------------------------------------------
-// Start Interview
+// Initialize Interview
 // ----------------------------------------------------------------------
 
-func (s *service) StartInterview(
+func (s *service) InitializeInterview(
 	ctx context.Context,
 	interviewID string,
 	userID string,
 	resumeID string,
 ) (*InterviewState, error) {
 
-	state, err := s.builder.BuildInitialState(
+	state, err := s.contextBuilder.BuildInitialState(
 		ctx,
 		interviewID,
 		userID,
 		resumeID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("build interview state: %w", err)
+		return nil, fmt.Errorf("build initial interview state: %w", err)
+	}
+
+	if err := s.graph.Initialize(ctx, state); err != nil {
+		return nil, fmt.Errorf("initialize interview graph: %w", err)
 	}
 
 	if err := s.repository.SaveState(ctx, state); err != nil {
@@ -76,67 +255,58 @@ func (s *service) StartInterview(
 }
 
 // ----------------------------------------------------------------------
-// Get Interview State
+// Process Candidate Response
 // ----------------------------------------------------------------------
 
-func (s *service) GetInterviewState(
+func (s *service) ProcessCandidateResponse(
 	ctx context.Context,
-	interviewID string,
+	state *InterviewState,
+	candidateAnswer string,
 ) (*InterviewState, error) {
 
-	state, err := s.repository.GetState(ctx, interviewID)
-	if err != nil {
-		return nil, fmt.Errorf("get interview state: %w", err)
+	state.ConversationHistory = append(
+		state.ConversationHistory,
+		ConversationMessage{
+			Role:       "CANDIDATE",
+			Content:    candidateAnswer,
+			QuestionID: state.CurrentQuestionID,
+			TopicID:    state.CurrentTopicID,
+			CreatedAt:  time.Now().UTC(),
+		},
+	)
+
+	state.LastUpdatedAt = time.Now().UTC()
+
+	if err := s.graph.ProcessTurn(ctx, state); err != nil {
+		return nil, fmt.Errorf("process interview turn: %w", err)
+	}
+
+	if err := s.repository.SaveState(ctx, state); err != nil {
+		return nil, fmt.Errorf("save interview state: %w", err)
 	}
 
 	return state, nil
 }
 
 // ----------------------------------------------------------------------
-// Save Interview State
+// Complete Interview
 // ----------------------------------------------------------------------
 
-func (s *service) SaveInterviewState(
+func (s *service) CompleteInterview(
 	ctx context.Context,
 	state *InterviewState,
-) error {
-
-	state.LastUpdatedAt = time.Now().UTC()
-
-	if err := s.repository.SaveState(ctx, state); err != nil {
-		return fmt.Errorf("save interview state: %w", err)
-	}
-
-	return nil
-}
-
-// ----------------------------------------------------------------------
-// End Interview
-// ----------------------------------------------------------------------
-
-func (s *service) EndInterview(
-	ctx context.Context,
-	interviewID string,
-) error {
-
-	state, err := s.repository.GetState(ctx, interviewID)
-	if err != nil {
-		return fmt.Errorf("load interview state: %w", err)
-	}
-
-	now := time.Now().UTC()
+) (*InterviewState, error) {
 
 	state.Status = constants.InterviewCompleted
-	state.LastUpdatedAt = now
-	state.ExpiresAt = now.Add(5 * time.Minute)
+	state.LastUpdatedAt = time.Now().UTC()
 
-	if err := s.repository.SaveState(ctx, state); err != nil {
-		return fmt.Errorf("final save interview state: %w", err)
+	if err := s.graph.GenerateFinalEvaluation(ctx, state); err != nil {
+		return nil, fmt.Errorf("generate final evaluation: %w", err)
 	}
 
-	if err := s.repository.DeleteState(ctx, interviewID); err != nil {
-		return fmt.Errorf("delete interview state: %w", err)
+	if err := s.repository.DeleteState(ctx, state.InterviewID); err != nil {
+		return nil, fmt.Errorf("delete interview state: %w", err)
 	}
 
-	return nil
+	return state, nil
 }

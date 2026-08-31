@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Veeru123456778/ai-interview-service/internal/interview/engine"
 	"github.com/Veeru123456778/ai-interview-service/internal/resume"
 	"github.com/Veeru123456778/ai-interview-service/internal/shared/constants"
-	apperrors "github.com/Veeru123456778/ai-interview-service/internal/shared/errors"
-	"github.com/Veeru123456778/ai-interview-service/internal/user"
 	"github.com/google/uuid"
 )
+
+// ----------------------------------------------------------------------
+// Service Interface
+// ----------------------------------------------------------------------
 
 type Service interface {
 	CreateInterview(
 		ctx context.Context,
-		supabaseUserID string,
+		userID string,
 		request *CreateInterviewRequest,
 	) (*CreateInterviewResponse, error)
 
@@ -29,23 +32,52 @@ type Service interface {
 		ctx context.Context,
 		userID string,
 	) (*ListInterviewsResponse, error)
+
+	StartInterview(
+		ctx context.Context,
+		interviewID string,
+		userID string,
+	) (*engine.InterviewState, error)
+
+	GetInterviewState(
+		ctx context.Context,
+		interviewID string,
+	) (*engine.InterviewState, error)
+
+	UpdateInterviewState(
+		ctx context.Context,
+		state *engine.InterviewState,
+	) error
+
+	CompleteInterview(
+		ctx context.Context,
+		interviewID string,
+		userID string,
+	) error
 }
 
+// ----------------------------------------------------------------------
+// Service Implementation
+// ----------------------------------------------------------------------
+
 type service struct {
-	repository    Repository
-	resumeService resume.Service
-	userService   user.Service
+	repository     Repository
+	resumeService  resume.Service
+	engineService  engine.Service
+	sessionManager SessionManager
 }
 
 func NewService(
 	repository Repository,
 	resumeService resume.Service,
-	userService user.Service,
+	engineService engine.Service,
+	sessionManager SessionManager,
 ) Service {
 	return &service{
-		repository:    repository,
-		resumeService: resumeService,
-		userService:   userService,
+		repository:     repository,
+		resumeService:  resumeService,
+		engineService:  engineService,
+		sessionManager: sessionManager,
 	}
 }
 
@@ -55,36 +87,23 @@ func NewService(
 
 func (s *service) CreateInterview(
 	ctx context.Context,
-	supabaseUserID string,
+	userID string,
 	request *CreateInterviewRequest,
 ) (*CreateInterviewResponse, error) {
 
-	// Resolve internal user.
-	userRecord, err := s.userService.GetUserBySupabaseUserID(
-		ctx,
-		supabaseUserID,
-	)
+	// Verify resume belongs to this user.
+	_, err := s.resumeService.GetResume(ctx, request.ResumeID, userID)
 	if err != nil {
-		return nil, apperrors.ErrUserNotFound
-	}
-
-	// Validate that the resume belongs to this user.
-	_, err = s.resumeService.GetResume(
-		ctx,
-		request.ResumeID,
-		userRecord.ID,
-	)
-	if err != nil {
-		return nil, apperrors.ErrResumeNotFound
+		return nil, err
 	}
 
 	now := time.Now().UTC()
 
 	interview := &Interview{
 		ID:          uuid.NewString(),
-		UserID:      userRecord.ID,
+		UserID:      userID,
 		ResumeID:    request.ResumeID,
-		Status:      constants.InterviewCreated,
+		Status:      constants.InterviewInProgress,
 		StartedAt:   nil,
 		CompletedAt: nil,
 		CreatedAt:   now,
@@ -104,6 +123,91 @@ func (s *service) CreateInterview(
 }
 
 // ----------------------------------------------------------------------
+// Start Interview
+// ----------------------------------------------------------------------
+
+func (s *service) StartInterview(
+	ctx context.Context,
+	interviewID string,
+	userID string,
+) (*engine.InterviewState, error) {
+
+	interview, err := s.repository.GetByID(ctx, interviewID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resume intelligence will be loaded inside the engine.
+	state, err := s.engineService.InitializeInterview(
+		ctx,
+		interview.ID,
+		interview.UserID,
+		interview.ResumeID,
+	)
+	if err != nil {
+		return nil, ErrInterviewEngineFailed
+	}
+
+	if err := s.sessionManager.CreateSession(ctx, state); err != nil {
+		return nil, err
+	}
+
+	return state, nil
+}
+
+// ----------------------------------------------------------------------
+// Get Interview State
+// ----------------------------------------------------------------------
+
+func (s *service) GetInterviewState(
+	ctx context.Context,
+	interviewID string,
+) (*engine.InterviewState, error) {
+
+	return s.sessionManager.GetSession(ctx, interviewID)
+}
+
+// ----------------------------------------------------------------------
+// Update Interview State
+// ----------------------------------------------------------------------
+
+func (s *service) UpdateInterviewState(
+	ctx context.Context,
+	state *engine.InterviewState,
+) error {
+
+	state.LastUpdatedAt = time.Now().UTC()
+
+	return s.sessionManager.UpdateSession(ctx, state)
+}
+
+// ----------------------------------------------------------------------
+// Complete Interview
+// ----------------------------------------------------------------------
+
+func (s *service) CompleteInterview(
+	ctx context.Context,
+	interviewID string,
+	userID string,
+) error {
+
+	if err := s.repository.UpdateStatus(
+		ctx,
+		interviewID,
+		userID,
+		constants.InterviewCompleted,
+	); err != nil {
+		return err
+	}
+
+	if err := s.sessionManager.DeleteSession(ctx, interviewID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ----------------------------------------------------------------------
 // Get Interview
 // ----------------------------------------------------------------------
 
@@ -115,7 +219,7 @@ func (s *service) GetInterview(
 
 	interview, err := s.repository.GetByID(ctx, interviewID, userID)
 	if err != nil {
-		return nil, apperrors.ErrInterviewNotFound
+		return nil, err
 	}
 
 	return &InterviewResponse{

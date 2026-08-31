@@ -34,6 +34,9 @@ type InterviewState struct {
 	AskedQuestions  []string `json:"asked_questions"`
 	CompletedTopics []string `json:"completed_topics"`
 
+	TechnologyGraph   []resume.TechnologyNode   `json:"technology_graph"`
+    InterviewContexts []resume.InterviewContext `json:"interview_contexts"`
+
 	ConversationHistory []ConversationMessage `json:"conversation_history"`
 	TopicScores         []TopicScore          `json:"topic_scores"`
 
