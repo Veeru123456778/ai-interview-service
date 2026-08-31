@@ -2,8 +2,11 @@ package resume
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	apperrors "github.com/Veeru123456778/ai-interview-service/internal/shared/errors"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -132,6 +135,9 @@ func (r *repository) GetByID(
 	)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperrors.ErrResumeNotFound
+		}
 		return nil, fmt.Errorf("get resume by id: %w", err)
 	}
 
@@ -219,16 +225,20 @@ func (r *repository) UpdateStatus(
 		  AND user_id = $2
 	`
 
-	_, err := r.db.Exec(
-		ctx,
-		query,
-		resumeID,
-		userID,
-		status,
+	commandTag, err := r.db.Exec(
+	ctx,
+	query,
+	resumeID,
+	userID,
+	status,
 	)
 
 	if err != nil {
 		return fmt.Errorf("update resume status: %w", err)
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		return apperrors.ErrResumeNotFound
 	}
 
 	return nil
@@ -258,18 +268,22 @@ func (r *repository) UpdateResumeIntelligence(
 		  AND user_id = $2
 	`
 
-	_, err := r.db.Exec(
-		ctx,
-		query,
-		resumeID,
-		userID,
-		technologyGraph,
-		interviewContexts,
-		status,
+	commandTag, err := r.db.Exec(
+	ctx,
+	query,
+	resumeID,
+	userID,
+	technologyGraph,
+	interviewContexts,
+	status,
 	)
 
 	if err != nil {
 		return fmt.Errorf("update resume intelligence: %w", err)
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		return apperrors.ErrResumeNotFound
 	}
 
 	return nil

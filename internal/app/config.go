@@ -62,6 +62,8 @@ type DatabaseConfig struct {
 	URL string
 }
 
+
+
 func LoadConfig() (*Config, error) {
 	_ = godotenv.Load()
 

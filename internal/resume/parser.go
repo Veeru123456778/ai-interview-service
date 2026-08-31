@@ -4,18 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-)
 
-// LLMProvider is implemented by internal/interview/engine/provider.
-// The Resume module depends only on this interface.
-type LLMProvider interface {
-	GenerateStructuredOutput(
-		ctx context.Context,
-		promptName string,
-		input map[string]any,
-		output any,
-	) error
-}
+	"github.com/Veeru123456778/ai-interview-service/internal/ai/provider"
+)
 
 type Parser interface {
 	Parse(
@@ -25,10 +16,10 @@ type Parser interface {
 }
 
 type parser struct {
-	llm LLMProvider
+	llm provider.LLMProvider
 }
 
-func NewParser(llm LLMProvider) Parser {
+func NewParser(llm provider.LLMProvider) Parser {
 	return &parser{
 		llm: llm,
 	}
@@ -51,12 +42,12 @@ func (p *parser) Parse(
 
 	err := p.llm.GenerateStructuredOutput(
 		ctx,
-		"resume_parser", // resolved later through prompt registry.
+		"internal/resume/prompts/resume_parser_v1.txt",
 		map[string]any{
 			"resume_text": normalizedResume,
 		},
 		output,
-	)
+    )
 
 	if err != nil {
 		return nil, fmt.Errorf("resume parser prompt failed: %w", err)

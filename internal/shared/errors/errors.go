@@ -70,4 +70,15 @@ var (
 		Message:    "Resume processing failed.",
 		StatusCode: 500,
 	}
+
+	ErrUserNotFound = &AppError{
+		Code:       "USER_NOT_FOUND",
+		Message:    "User not found.",
+		StatusCode: 404,
+	}
+	ErrInterviewNotFound = &AppError{
+		Code:       "INTERVIEW_NOT_FOUND",
+		Message:    "Interview not found.",
+		StatusCode: 404,
+	}
 )

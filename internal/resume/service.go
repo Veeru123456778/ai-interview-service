@@ -10,13 +10,16 @@ import (
 
 	"github.com/Veeru123456778/ai-interview-service/internal/shared/constants"
 	apperrors "github.com/Veeru123456778/ai-interview-service/internal/shared/errors"
+	"github.com/Veeru123456778/ai-interview-service/internal/user"
 	"github.com/google/uuid"
 )
+
+// Orchestrates the complete Resume Processing Pipeline.
 
 type Service interface {
 	CreateResume(
 		ctx context.Context,
-		userID string,
+		supabaseUserID string,
 		file multipart.File,
 		fileName string,
 	) (*UploadResumeResponse, error)
@@ -35,6 +38,7 @@ type Service interface {
 
 type service struct {
 	repository   Repository
+	userService  user.Service
 	extractor    Extractor
 	normalizer   Normalizer
 	parser       Parser
@@ -43,6 +47,7 @@ type service struct {
 
 func NewService(
 	repository Repository,
+	userService user.Service,
 	extractor Extractor,
 	normalizer Normalizer,
 	parser Parser,
@@ -50,6 +55,7 @@ func NewService(
 ) Service {
 	return &service{
 		repository:   repository,
+		userService:  userService,
 		extractor:    extractor,
 		normalizer:   normalizer,
 		parser:       parser,
@@ -63,7 +69,7 @@ func NewService(
 
 func (s *service) CreateResume(
 	ctx context.Context,
-	userID string,
+	supabaseUserID string,
 	file multipart.File,
 	fileName string,
 ) (*UploadResumeResponse, error) {
@@ -72,11 +78,20 @@ func (s *service) CreateResume(
 		return nil, err
 	}
 
+	// Resolve internal user from Supabase user ID.
+	userRecord, err := s.userService.GetUserBySupabaseUserID(
+		ctx,
+		supabaseUserID,
+	)
+	if err != nil {
+		return nil, apperrors.ErrUserNotFound
+	}
+
 	now := time.Now().UTC()
 
 	resume := &Resume{
 		ID:                uuid.NewString(),
-		UserID:            userID,
+		UserID:            userRecord.ID,
 		FileName:          fileName,
 		Status:            constants.ResumeProcessing,
 		TechnologyGraph:   nil,
@@ -85,14 +100,10 @@ func (s *service) CreateResume(
 		UpdatedAt:         now,
 	}
 
-	// Step 1: Save initial resume record.
+	// Step 1: Save resume metadata.
 	if err := s.repository.Create(ctx, resume); err != nil {
 		return nil, fmt.Errorf("create resume: %w", err)
 	}
-
-	// ------------------------------------------------------------------
-	// Resume Processing Pipeline
-	// ------------------------------------------------------------------
 
 	// Step 2: Extract text from PDF.
 	rawText, err := s.extractor.ExtractText(file)
@@ -100,7 +111,7 @@ func (s *service) CreateResume(
 		_ = s.repository.UpdateStatus(
 			ctx,
 			resume.ID,
-			userID,
+			userRecord.ID,
 			constants.ResumeFailed,
 		)
 		return nil, apperrors.ErrResumeExtractionFailed
@@ -109,13 +120,13 @@ func (s *service) CreateResume(
 	// Step 3: Normalize extracted text.
 	normalizedText := s.normalizer.Normalize(rawText)
 
-	// Step 4: Parse resume using LLM.
+	// Step 4: Parse resume using Gemini.
 	parserOutput, err := s.parser.Parse(ctx, normalizedText)
 	if err != nil {
 		_ = s.repository.UpdateStatus(
 			ctx,
 			resume.ID,
-			userID,
+			userRecord.ID,
 			constants.ResumeFailed,
 		)
 		return nil, apperrors.ErrResumeParserFailed
@@ -127,7 +138,7 @@ func (s *service) CreateResume(
 		_ = s.repository.UpdateStatus(
 			ctx,
 			resume.ID,
-			userID,
+			userRecord.ID,
 			constants.ResumeFailed,
 		)
 		return nil, apperrors.ErrResumeProcessingFailed
@@ -137,6 +148,12 @@ func (s *service) CreateResume(
 		intelligence.TechnologyGraph,
 	)
 	if err != nil {
+		_ = s.repository.UpdateStatus(
+			ctx,
+			resume.ID,
+			userRecord.ID,
+			constants.ResumeFailed,
+		)
 		return nil, apperrors.ErrResumeProcessingFailed
 	}
 
@@ -144,18 +161,30 @@ func (s *service) CreateResume(
 		intelligence.InterviewContexts,
 	)
 	if err != nil {
+		_ = s.repository.UpdateStatus(
+			ctx,
+			resume.ID,
+			userRecord.ID,
+			constants.ResumeFailed,
+		)
 		return nil, apperrors.ErrResumeProcessingFailed
 	}
 
-	// Step 6: Save Resume Intelligence.
+	// Step 6: Persist Resume Intelligence.
 	if err := s.repository.UpdateResumeIntelligence(
 		ctx,
 		resume.ID,
-		userID,
+		userRecord.ID,
 		technologyGraph,
 		interviewContexts,
 		constants.ResumeReady,
 	); err != nil {
+		_ = s.repository.UpdateStatus(
+			ctx,
+			resume.ID,
+			userRecord.ID,
+			constants.ResumeFailed,
+		)
 		return nil, apperrors.ErrResumeProcessingFailed
 	}
 
@@ -179,7 +208,7 @@ func (s *service) GetResume(
 
 	resume, err := s.repository.GetByID(ctx, resumeID, userID)
 	if err != nil {
-		return nil, apperrors.ErrResumeNotFound
+		return nil, err
 	}
 
 	return &ResumeResponse{

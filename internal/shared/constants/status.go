@@ -7,11 +7,14 @@ const (
 	ResumeFailed     = "FAILED"
 )
 
+
 // Interview Status
 const (
-	InterviewActive    = "ACTIVE"
-	InterviewCompleted = "COMPLETED"
-	InterviewAbandoned = "ABANDONED"
+	InterviewCreated    = "CREATED"
+	InterviewInProgress = "IN_PROGRESS"
+	InterviewCompleted  = "COMPLETED"
+	InterviewAbandoned  = "ABANDONED"
+	InterviewFailed     = "FAILED"
 )
 
 // Difficulty Levels

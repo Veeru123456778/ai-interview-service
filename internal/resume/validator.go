@@ -2,60 +2,83 @@ package resume
 
 import (
 	"fmt"
-
-	sharedvalidator "github.com/Veeru123456778/ai-interview-service/internal/shared/validator"
+	"strings"
 )
 
-/*
-ResumeParserOutput is the exact JSON schema expected from Gemini.
-This is NOT the database model.
-*/
+// ----------------------------------------------------------------------
+// Resume Parser Output Schema
+// ----------------------------------------------------------------------
+
 type ResumeParserOutput struct {
-	CandidateName string `json:"candidate_name" validate:"required"`
-
-	Summary string `json:"summary"`
-
-	Skills []string `json:"skills" validate:"required,min=1,dive,required"`
-
-	TechnologyGraph []TechnologyNode `json:"technology_graph" validate:"required,min=1,dive"`
-
-	InterviewContexts []InterviewContext `json:"interview_contexts" validate:"required,min=1,dive"`
+	Name           *CandidateName     `json:"name,omitempty"`
+	Skills         []Skill            `json:"skills"`
+	Projects       []Project          `json:"projects"`
+	Experience     []Experience       `json:"experience,omitempty"`
+	Education      []Education        `json:"education,omitempty"`
+	Certifications []Certification    `json:"certifications,omitempty"`
 }
 
-/*
-TechnologyNode represents one technology extracted from the resume.
-*/
-type TechnologyNode struct {
-	ID string `json:"id" validate:"required"`
+// ----------------------------------------------------------------------
+// Name (Optional)
+// ----------------------------------------------------------------------
 
-	Name string `json:"name" validate:"required"`
-
-	Category string `json:"category" validate:"required"`
+type CandidateName struct {
+	FullName string `json:"full_name"`
 }
 
-/*
-InterviewContext represents one interview context such as a project,
-internship, or work experience.
-*/
-type InterviewContext struct {
-	ID string `json:"id" validate:"required"`
+// ----------------------------------------------------------------------
+// Skills (Required)
+// ----------------------------------------------------------------------
 
-	Name string `json:"name" validate:"required"`
-
-	Type string `json:"type" validate:"required,oneof=PROJECT EXPERIENCE INTERNSHIP"`
-
-	Description string `json:"description"`
-
-	Topics []ContextTopic `json:"topics" validate:"required,min=1,dive"`
+type Skill struct {
+	Name string `json:"name"`
 }
 
-/*
-ContextTopic links a technology to a specific interview context.
-*/
-type ContextTopic struct {
-	TopicID string `json:"topic_id" validate:"required"`
+// ----------------------------------------------------------------------
+// Projects (Required)
+// ----------------------------------------------------------------------
 
-	Scenario string `json:"scenario" validate:"required"`
+type Project struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Technologies []string `json:"technologies"`
+	Highlights   []string `json:"highlights,omitempty"`
+}
+
+// ----------------------------------------------------------------------
+// Experience (Optional)
+// ----------------------------------------------------------------------
+
+type Experience struct {
+	Company        string   `json:"company"`
+	Role           string   `json:"role"`
+	EmploymentType string   `json:"employment_type"`
+	Duration       string   `json:"duration"`
+	Description    string   `json:"description"`
+	Technologies   []string `json:"technologies"`
+	Highlights     []string `json:"highlights,omitempty"`
+}
+
+// ----------------------------------------------------------------------
+// Education (Optional)
+// ----------------------------------------------------------------------
+
+type Education struct {
+	Institution string `json:"institution"`
+	Degree      string `json:"degree"`
+	Field       string `json:"field"`
+	Duration    string `json:"duration"`
+}
+
+// ----------------------------------------------------------------------
+// Certifications (Optional)
+// ----------------------------------------------------------------------
+
+type Certification struct {
+	Name         string `json:"name"`
+	Issuer       string `json:"issuer"`
+	IssuedAt     string `json:"issued_at,omitempty"`
+	CredentialID string `json:"credential_id,omitempty"`
 }
 
 // ----------------------------------------------------------------------
@@ -64,11 +87,51 @@ type ContextTopic struct {
 
 func ValidateResumeParserOutput(output *ResumeParserOutput) error {
 
-	validate := sharedvalidator.New()
-
-	if err := validate.Struct(output); err != nil {
-		return fmt.Errorf("resume parser validation failed: %w", err)
+	if output == nil {
+		return fmt.Errorf("resume parser output is nil")
 	}
+
+	// Skills are required.
+	if len(output.Skills) == 0 {
+		return fmt.Errorf("resume must contain at least one skill")
+	}
+
+	for index, skill := range output.Skills {
+		if strings.TrimSpace(skill.Name) == "" {
+			return fmt.Errorf("skill %d has empty name", index)
+		}
+	}
+
+	// Projects are required.
+	if len(output.Projects) == 0 {
+		return fmt.Errorf("resume must contain at least one project")
+	}
+
+	for index, project := range output.Projects {
+
+		if strings.TrimSpace(project.Name) == "" {
+			return fmt.Errorf("project %d has empty name", index)
+		}
+
+		if len(project.Technologies) == 0 {
+			return fmt.Errorf("project %s must contain at least one technology", project.Name)
+		}
+	}
+
+	// Experience is optional, but validate entries if present.
+	for index, experience := range output.Experience {
+
+		if strings.TrimSpace(experience.Company) == "" {
+			return fmt.Errorf("experience %d has empty company", index)
+		}
+
+		if strings.TrimSpace(experience.Role) == "" {
+			return fmt.Errorf("experience %d has empty role", index)
+		}
+	}
+
+	// Education is optional.
+	// Certifications are optional.
 
 	return nil
 }
